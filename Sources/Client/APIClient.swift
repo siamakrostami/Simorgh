@@ -237,6 +237,29 @@ extension APIClient {
         .eraseToAnyPublisher()
     }
 
+    /// Performs a multipart form data upload request using Combine.
+    /// - Parameters:
+    ///   - endpoint: The NetworkRouter defining the request.
+    ///   - formFields: An array of multipart form fields (text values and/or files).
+    ///   - progressCompletion: A closure to handle upload progress updates.
+    /// - Returns: A publisher that emits the decoded response or an error.
+    public func uploadRequest<T: Codable>(
+        _ endpoint: any NetworkRouter, formFields: [MultipartFormField],
+        progressCompletion: @escaping ProgressHandler
+    ) -> AnyPublisher<T, NetworkError> {
+        guard let urlRequest = try? endpoint.asURLRequest() else {
+            return Fail(error: NetworkError.unknown)
+                .eraseToAnyPublisher()
+        }
+
+        return makeUploadRequest(
+            urlRequest: urlRequest, formFields: formFields,
+            progressCompletion: progressCompletion, retryCount: 3
+        )
+        .subscribe(on: apiQueue)
+        .eraseToAnyPublisher()
+    }
+
     /// Internal method to make the actual upload request.
     private func makeUploadRequest<T: Codable>(
         urlRequest: URLRequest, params: Codable?, withName: String, data: Data,
@@ -247,6 +270,33 @@ extension APIClient {
             urlRequest: urlRequest, parameters: params, data: data,
             filename: withName)
 
+        return performUpload(
+            urlRequest: newUrlRequest, bodyData: bodyData,
+            progressCompletion: progressCompletion, retryCount: retryCount,
+            originalUrlRequest: urlRequest)
+    }
+
+    /// Internal method to make a multipart form fields upload request.
+    private func makeUploadRequest<T: Codable>(
+        urlRequest: URLRequest, formFields: [MultipartFormField],
+        progressCompletion: @escaping ProgressHandler, retryCount: Int
+    ) -> AnyPublisher<T, NetworkError> {
+        URLSessionLogger.shared.logRequest(urlRequest, logLevel: logLevel)
+        let (newUrlRequest, bodyData) = createMultipartBody(
+            urlRequest: urlRequest, formFields: formFields)
+
+        return performUpload(
+            urlRequest: newUrlRequest, bodyData: bodyData,
+            progressCompletion: progressCompletion, retryCount: retryCount,
+            originalUrlRequest: urlRequest)
+    }
+
+    /// Shared upload execution for both legacy and multipart form field uploads.
+    private func performUpload<T: Codable>(
+        urlRequest: URLRequest, bodyData: Data,
+        progressCompletion: @escaping ProgressHandler, retryCount: Int,
+        originalUrlRequest: URLRequest
+    ) -> AnyPublisher<T, NetworkError> {
         return Future<Data, NetworkError> { [weak self] promise in
             guard let self = self else {
                 return
@@ -258,7 +308,7 @@ extension APIClient {
             let session = self.configuredSession(
                 delegate: progressDelegate, configuration: self.configuration)
 
-            let task = session.uploadTask(with: newUrlRequest, from: bodyData) {
+            let task = session.uploadTask(with: urlRequest, from: bodyData) {
                 data, response, error in
                 URLSessionLogger.shared.logResponse(
                     response, data: data, error: error, logLevel: self.logLevel)
@@ -300,7 +350,7 @@ extension APIClient {
                 .mapError { self.mapErrorToNetworkError($0) }
                 .catch { error -> AnyPublisher<T, NetworkError> in
                     self.handleRetry(
-                        urlRequest: urlRequest, retryCount: retryCount,
+                        urlRequest: originalUrlRequest, retryCount: retryCount,
                         error: error)
                 }
                 .eraseToAnyPublisher()
@@ -475,6 +525,46 @@ extension APIClient {
         }
     }
 
+    /// Performs a multipart form data upload request using async/await.
+    /// - Parameters:
+    ///   - endpoint: The NetworkRouter defining the request.
+    ///   - formFields: An array of multipart form fields (text values and/or files).
+    ///   - progressCompletion: A closure to handle upload progress updates.
+    /// - Returns: The decoded response.
+    /// - Throws: A NetworkError if the request fails.
+    public func uploadRequest<T: Codable>(
+        _ endpoint: any NetworkRouter, formFields: [MultipartFormField],
+        progressCompletion: @escaping ProgressHandler
+    ) async throws -> T {
+        guard let urlRequest = try? endpoint.asURLRequest() else {
+            throw NetworkError.unknown
+        }
+
+        return try await withCheckedThrowingContinuation {
+            [weak self] continuation in
+            guard let self = self else {
+                continuation.resume(throwing: NetworkError.unknown)
+                return
+            }
+            apiQueue.async {
+                Task {
+                    do {
+                        let result: T = try await self.makeAsyncUploadRequest(
+                            urlRequest: urlRequest, formFields: formFields,
+                            progressCompletion: progressCompletion,
+                            retryCount: 3)
+                        continuation.resume(returning: result)
+                    } catch let error as NetworkError {
+                        continuation.resume(throwing: error)
+                    } catch {
+                        continuation.resume(
+                            throwing: NetworkError.unknown)
+                    }
+                }
+            }
+        }
+    }
+
     /// Internal method to make the actual async upload request.
     private func makeAsyncUploadRequest<T: Codable>(
         urlRequest: URLRequest, params: Codable?, withName: String, data: Data,
@@ -485,6 +575,33 @@ extension APIClient {
             urlRequest: urlRequest, parameters: params, data: data,
             filename: withName)
 
+        return try await performAsyncUpload(
+            urlRequest: newUrlRequest, bodyData: bodyData,
+            progressCompletion: progressCompletion, retryCount: retryCount,
+            originalUrlRequest: urlRequest)
+    }
+
+    /// Internal method to make the async multipart form fields upload request.
+    private func makeAsyncUploadRequest<T: Codable>(
+        urlRequest: URLRequest, formFields: [MultipartFormField],
+        progressCompletion: @escaping ProgressHandler, retryCount: Int
+    ) async throws -> T {
+        URLSessionLogger.shared.logRequest(urlRequest, logLevel: logLevel)
+        let (newUrlRequest, bodyData) = createMultipartBody(
+            urlRequest: urlRequest, formFields: formFields)
+
+        return try await performAsyncUpload(
+            urlRequest: newUrlRequest, bodyData: bodyData,
+            progressCompletion: progressCompletion, retryCount: retryCount,
+            originalUrlRequest: urlRequest)
+    }
+
+    /// Shared async upload execution for both legacy and multipart form field uploads.
+    private func performAsyncUpload<T: Codable>(
+        urlRequest: URLRequest, bodyData: Data,
+        progressCompletion: @escaping ProgressHandler, retryCount: Int,
+        originalUrlRequest: URLRequest
+    ) async throws -> T {
         let progressDelegate = UploadProgressDelegate()
         progressDelegate.progressHandler = progressCompletion
         let session = configuredSession(
@@ -492,7 +609,7 @@ extension APIClient {
 
         do {
             let (data, response) = try await session.upload(
-                for: newUrlRequest, from: bodyData)
+                for: urlRequest, from: bodyData)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw NetworkError.unknown
@@ -503,7 +620,6 @@ extension APIClient {
 
             if 200..<300 ~= httpResponse.statusCode {
                 do {
-                    // Use thread-safe decoder
                     let decodedResponse = try self.decoder.decode(T.self, from: data)
                     return decodedResponse
                 } catch {
@@ -516,7 +632,7 @@ extension APIClient {
             }
         } catch {
             return try await handleAsyncRetry(
-                urlRequest: urlRequest, retryCount: retryCount, error: error)
+                urlRequest: originalUrlRequest, retryCount: retryCount, error: error)
         }
     }
 }
@@ -778,17 +894,21 @@ extension APIClient {
         delegate: URLSessionDelegate? = nil,
         configuration: URLSessionConfiguration? = nil
     ) -> URLSession {
-        guard let configuration else {
-            let configuration = URLSessionConfiguration.default
-            configuration.timeoutIntervalForRequest = 120
-            configuration.timeoutIntervalForResource = 120
-            configuration.requestCachePolicy =
-                .reloadIgnoringLocalAndRemoteCacheData
-            return URLSession(
-                configuration: configuration, delegate: delegate,
-                delegateQueue: nil)
+        let sessionConfiguration: URLSessionConfiguration
+        if let configuration {
+            sessionConfiguration = configuration
+        } else {
+            sessionConfiguration = URLSessionConfiguration.default
+            sessionConfiguration.timeoutIntervalForRequest = 120
+            sessionConfiguration.timeoutIntervalForResource = 120
         }
-        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        sessionConfiguration.requestCachePolicy =
+            .reloadIgnoringLocalAndRemoteCacheData
+        sessionConfiguration.urlCache = nil
+
+        let session = URLSession(
+            configuration: sessionConfiguration, delegate: delegate,
+            delegateQueue: nil)
         addSession(session)
         return session
     }
@@ -833,6 +953,44 @@ extension APIClient {
         body.appendString("Content-Type: \(mime?.mime ?? "")\r\n\r\n")
         body.append(data)
         body.appendString("\r\n")
+        body.appendString("--\(boundary)--\r\n")
+
+        return (newUrlRequest, body)
+    }
+
+    /// Creates the body for a multipart form data request from an array of form fields.
+    private func createMultipartBody(
+        urlRequest: URLRequest, formFields: [MultipartFormField]
+    ) -> (URLRequest, Data) {
+        var newUrlRequest = urlRequest
+        let boundary = "Boundary-\(UUID().uuidString)"
+        newUrlRequest.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+
+        for field in formFields {
+            switch field {
+            case .text(let name, let value):
+                body.appendString("--\(boundary)\r\n")
+                body.appendString(
+                    "Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+                body.appendString("\(value)\r\n")
+
+            case .file(let name, let data, let fileName, let mimeType):
+                let resolvedMimeType = mimeType
+                    ?? MimeTypeDetector.detectMimeType(from: data)?.mime
+                    ?? "application/octet-stream"
+                body.appendString("--\(boundary)\r\n")
+                body.appendString(
+                    "Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(fileName)\"\r\n")
+                body.appendString("Content-Type: \(resolvedMimeType)\r\n\r\n")
+                body.append(data)
+                body.appendString("\r\n")
+            }
+        }
+
         body.appendString("--\(boundary)--\r\n")
 
         return (newUrlRequest, body)
