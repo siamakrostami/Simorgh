@@ -1,6 +1,6 @@
 //
 //  Post.swift
-//  SRGenericNetworkLayerSampleApp
+//  SimorghExampleApp
 //
 //  Created by Siamak Rostami on 9/20/24.
 //

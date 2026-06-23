@@ -7,18 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		01BC1EF02D95D06000DF8431 /* SRNetworkManager in Frameworks */ = {isa = PBXBuildFile; productRef = 01BC1EEF2D95D06000DF8431 /* SRNetworkManager */; };
-		D50FF5E02D10478B008AF330 /* SRNetworkManager in Frameworks */ = {isa = PBXBuildFile; productRef = D50FF5DF2D10478B008AF330 /* SRNetworkManager */; };
+		01BC1EF02D95D06000DF8431 /* Simorgh in Frameworks */ = {isa = PBXBuildFile; productRef = 01BC1EEF2D95D06000DF8431 /* Simorgh */; };
+		D50FF5E02D10478B008AF330 /* Simorgh in Frameworks */ = {isa = PBXBuildFile; productRef = D50FF5DF2D10478B008AF330 /* Simorgh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		017913072C9E03770011B237 /* SRNetworkManagerExampleApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SRNetworkManagerExampleApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		017913072C9E03770011B237 /* SimorghExampleApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimorghExampleApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		017913092C9E03770011B237 /* SRNetworkManagerExampleApp */ = {
+		017913092C9E03770011B237 /* SimorghExampleApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SRNetworkManagerExampleApp;
+			path = SimorghExampleApp;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -28,8 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				01BC1EF02D95D06000DF8431 /* SRNetworkManager in Frameworks */,
-				D50FF5E02D10478B008AF330 /* SRNetworkManager in Frameworks */,
+				01BC1EF02D95D06000DF8431 /* Simorgh in Frameworks */,
+				D50FF5E02D10478B008AF330 /* Simorgh in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -39,7 +39,7 @@
 		017912FE2C9E03770011B237 = {
 			isa = PBXGroup;
 			children = (
-				017913092C9E03770011B237 /* SRNetworkManagerExampleApp */,
+				017913092C9E03770011B237 /* SimorghExampleApp */,
 				017913082C9E03770011B237 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -47,7 +47,7 @@
 		017913082C9E03770011B237 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				017913072C9E03770011B237 /* SRNetworkManagerExampleApp.app */,
+				017913072C9E03770011B237 /* SimorghExampleApp.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -55,9 +55,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		017913062C9E03770011B237 /* SRNetworkManagerExampleApp */ = {
+		017913062C9E03770011B237 /* SimorghExampleApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 017913152C9E03780011B237 /* Build configuration list for PBXNativeTarget "SRNetworkManagerExampleApp" */;
+			buildConfigurationList = 017913152C9E03780011B237 /* Build configuration list for PBXNativeTarget "SimorghExampleApp" */;
 			buildPhases = (
 				017913032C9E03770011B237 /* Sources */,
 				017913042C9E03770011B237 /* Frameworks */,
@@ -68,15 +68,15 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				017913092C9E03770011B237 /* SRNetworkManagerExampleApp */,
+				017913092C9E03770011B237 /* SimorghExampleApp */,
 			);
-			name = SRNetworkManagerExampleApp;
+			name = SimorghExampleApp;
 			packageProductDependencies = (
-				D50FF5DF2D10478B008AF330 /* SRNetworkManager */,
-				01BC1EEF2D95D06000DF8431 /* SRNetworkManager */,
+				D50FF5DF2D10478B008AF330 /* Simorgh */,
+				01BC1EEF2D95D06000DF8431 /* Simorgh */,
 			);
-			productName = SRGenericNetworkLayerExampleApp;
-			productReference = 017913072C9E03770011B237 /* SRNetworkManagerExampleApp.app */;
+			productName = SimorghExampleApp;
+			productReference = 017913072C9E03770011B237 /* SimorghExampleApp.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -94,7 +94,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 017913022C9E03770011B237 /* Build configuration list for PBXProject "SRNetworkManagerExampleApp" */;
+			buildConfigurationList = 017913022C9E03770011B237 /* Build configuration list for PBXProject "SimorghExampleApp" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -104,14 +104,14 @@
 			mainGroup = 017912FE2C9E03770011B237;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../SRGenericNetworkLayer" */,
+				01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../Simorgh" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 017913082C9E03770011B237 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				017913062C9E03770011B237 /* SRNetworkManagerExampleApp */,
+				017913062C9E03770011B237 /* SimorghExampleApp */,
 			);
 		};
 /* End PBXProject section */
@@ -263,7 +263,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SRNetworkManagerExampleApp/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"SimorghExampleApp/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -277,7 +277,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.siamak.SRNetworkManagerExampleApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.siamak.SimorghExampleApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -292,7 +292,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SRNetworkManagerExampleApp/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"SimorghExampleApp/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -306,7 +306,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.siamak.SRNetworkManagerExampleApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.siamak.SimorghExampleApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -317,7 +317,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		017913022C9E03770011B237 /* Build configuration list for PBXProject "SRNetworkManagerExampleApp" */ = {
+		017913022C9E03770011B237 /* Build configuration list for PBXProject "SimorghExampleApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				017913132C9E03780011B237 /* Debug */,
@@ -326,7 +326,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		017913152C9E03780011B237 /* Build configuration list for PBXNativeTarget "SRNetworkManagerExampleApp" */ = {
+		017913152C9E03780011B237 /* Build configuration list for PBXNativeTarget "SimorghExampleApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				017913162C9E03780011B237 /* Debug */,
@@ -338,20 +338,20 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../SRGenericNetworkLayer" */ = {
+		01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../Simorgh" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../SRGenericNetworkLayer;
+			relativePath = ../../Simorgh;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		01BC1EEF2D95D06000DF8431 /* SRNetworkManager */ = {
+		01BC1EEF2D95D06000DF8431 /* Simorgh */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = SRNetworkManager;
+			productName = Simorgh;
 		};
-		D50FF5DF2D10478B008AF330 /* SRNetworkManager */ = {
+		D50FF5DF2D10478B008AF330 /* Simorgh */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = SRNetworkManager;
+			productName = Simorgh;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
