@@ -56,7 +56,7 @@ public struct DownloadTask: Identifiable, Codable, Sendable, Equatable {
     ) {
         self.id = UUID()
         self.url = url
-        self.fileName = fileName ?? url.lastPathComponent
+        self.fileName = fileName ?? (url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent)
         self.priority = priority
         self.state = .queued
         self.totalBytes = 0

@@ -286,6 +286,17 @@ public final class DownloadManager: @unchecked Sendable {
         guard let taskId = taskId(for: urlTask),
               var task = tracker.task(id: taskId) else { return }
 
+        // Validate HTTP status — non-2xx means the server sent an error body, not the file
+        if let http = urlTask.response as? HTTPURLResponse, !(200..<300 ~= http.statusCode) {
+            try? FileManager.default.removeItem(at: tempURL)
+            let err = URLError(
+                .badServerResponse,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"]
+            )
+            handleFailure(urlTask: urlTask, error: err)
+            return
+        }
+
         // Detect MIME and fix extension if needed
         if let data = try? Data(contentsOf: tempURL, options: .mappedIfSafe) {
             let detected = MimeTypeDetector.detectMimeType(from: data)
