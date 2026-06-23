@@ -4,6 +4,7 @@ import SwiftUI
 struct DownloadView: View {
     @StateObject private var vm = DownloadViewModel()
     @State private var previewURL: URL?
+    @State private var showCatalog = false
 
     var body: some View {
         NavigationView {
@@ -29,31 +30,31 @@ struct DownloadView: View {
                         Text("Critical").tag(DownloadPriority.critical)
                     }
                     .pickerStyle(.segmented)
+
+                    // Batch catalog trigger
+                    Button {
+                        showCatalog = true
+                    } label: {
+                        Label("Batch Download Catalog (\(downloadCatalog.count) files)", systemImage: "square.stack.3d.down.right")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.indigo)
                 }
                 .padding()
-
-                Divider()
-
-                // Demo shortcuts
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(vm.demoURLs, id: \.url) { demo in
-                            Button(demo.name) { vm.enqueue(urlString: demo.url) }
-                                .font(.caption)
-                                .buttonStyle(.bordered)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-                }
 
                 Divider()
 
                 // Downloads list
                 if vm.rows.isEmpty {
                     Spacer()
-                    Text("No downloads yet")
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.dotted")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("No downloads yet")
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                 } else {
                     List {
@@ -71,10 +72,99 @@ struct DownloadView: View {
                 }
             }
             .navigationTitle("Downloads")
+            .sheet(isPresented: $showCatalog) {
+                CatalogSheet(vm: vm)
+            }
             .sheet(item: $previewURL) { url in
                 QuickLookPreview(url: url)
                     .ignoresSafeArea()
             }
+        }
+    }
+}
+
+// MARK: - Catalog sheet
+
+private struct CatalogSheet: View {
+    @ObservedObject var vm: DownloadViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section {
+                    ForEach(downloadCatalog) { file in
+                        HStack(spacing: 12) {
+                            // Type badge
+                            Text(file.type)
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(typeColor(file.type).opacity(0.15))
+                                .foregroundStyle(typeColor(file.type))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .frame(width: 44, alignment: .leading)
+
+                            Text(file.name)
+                                .font(.subheadline)
+                                .lineLimit(2)
+
+                            Spacer()
+
+                            Image(systemName: vm.selectedDemoIDs.contains(file.id)
+                                  ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(vm.selectedDemoIDs.contains(file.id) ? .indigo : .secondary)
+                                .font(.title3)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { vm.toggleDemoSelection(file.id) }
+                    }
+                } header: {
+                    HStack {
+                        Text("\(downloadCatalog.count) files available")
+                        Spacer()
+                        Button(vm.selectedDemoIDs.count == downloadCatalog.count ? "Deselect All" : "Select All") {
+                            if vm.selectedDemoIDs.count == downloadCatalog.count {
+                                vm.clearDemoSelection()
+                            } else {
+                                vm.selectAllDemos()
+                            }
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Batch Catalog")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        vm.clearDemoSelection()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        vm.downloadSelected()
+                        dismiss()
+                    } label: {
+                        Label("Download (\(vm.selectedDemoIDs.count))", systemImage: "arrow.down.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.selectedDemoIDs.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func typeColor(_ type: String) -> Color {
+        switch type {
+        case "PDF":  return .red
+        case "MP4":  return .blue
+        case "MP3", "WAV": return .purple
+        case "JPEG", "PNG", "GIF": return .green
+        case "ZIP":  return .orange
+        default:     return .secondary
         }
     }
 }
@@ -88,7 +178,6 @@ private struct DownloadRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // File name + state badge
             HStack {
                 Text(row.fileName.isEmpty ? row.url.lastPathComponent : row.fileName)
                     .font(.subheadline)
@@ -97,23 +186,19 @@ private struct DownloadRowView: View {
                 stateBadge
             }
 
-            // Progress bar
             if row.state == .downloading || row.state == .paused {
                 ProgressView(value: row.fraction.isNaN ? 0 : row.fraction)
                     .progressViewStyle(.linear)
             }
 
-            // Speed / ETA while downloading
             if row.state == .downloading {
                 HStack {
                     Text(String(format: "%.1f KB/s", row.speedKBps))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                     if let eta = row.etaSeconds {
                         Text("·").foregroundStyle(.secondary)
                         Text("ETA \(Int(eta))s")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if !row.fraction.isNaN {
                         Spacer()
@@ -123,66 +208,48 @@ private struct DownloadRowView: View {
                 }
             }
 
-            // Completed: file size + local path
             if row.state == .completed {
                 HStack(spacing: 6) {
                     if !row.fileSizeString.isEmpty {
                         Label(row.fileSizeString, systemImage: "internaldrive")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if let url = row.localURL {
                         Spacer()
                         Text(url.lastPathComponent)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
             }
 
-            // Error
             if let err = row.errorMessage {
                 Text(err)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
+                    .font(.caption).foregroundStyle(.red).lineLimit(2)
             }
 
-            // Action buttons
             HStack(spacing: 8) {
                 Spacer()
                 switch row.state {
                 case .downloading:
                     Button("Pause") { vm.pause(id: row.id) }
-                        .buttonStyle(.bordered)
-                        .font(.caption)
+                        .buttonStyle(.bordered).font(.caption)
                 case .paused:
                     Button("Resume") { vm.resume(id: row.id) }
-                        .buttonStyle(.borderedProminent)
-                        .font(.caption)
+                        .buttonStyle(.borderedProminent).font(.caption)
                 case .failed:
                     Button("Retry") { vm.resume(id: row.id) }
-                        .buttonStyle(.borderedProminent)
-                        .font(.caption)
+                        .buttonStyle(.borderedProminent).font(.caption)
                 case .completed:
                     if let url = row.localURL {
-                        Button {
-                            onOpen(url)
-                        } label: {
-                            Label("Open", systemImage: "eye")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .font(.caption)
+                        Button { onOpen(url) } label: { Label("Open", systemImage: "eye") }
+                            .buttonStyle(.borderedProminent).font(.caption)
                     }
                 default:
                     EmptyView()
                 }
                 if row.state != .completed {
                     Button("Cancel") { vm.cancel(id: row.id) }
-                        .buttonStyle(.bordered)
-                        .font(.caption)
-                        .tint(.red)
+                        .buttonStyle(.bordered).font(.caption).tint(.red)
                 }
             }
         }
@@ -193,30 +260,27 @@ private struct DownloadRowView: View {
     private var stateBadge: some View {
         let (label, color): (String, Color) = {
             switch row.state {
-            case .queued:      return ("Queued", .orange)
-            case .downloading: return ("↓", .blue)
-            case .paused:      return ("Paused", .yellow)
-            case .completed:   return ("Done", .green)
-            case .failed:      return ("Failed", .red)
+            case .queued:      return ("Queued",    .orange)
+            case .downloading: return ("↓",         .blue)
+            case .paused:      return ("Paused",    .yellow)
+            case .completed:   return ("Done",      .green)
+            case .failed:      return ("Failed",    .red)
             case .cancelled:   return ("Cancelled", .gray)
             }
         }()
         Text(label)
             .font(.caption2.bold())
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())
     }
 }
 
-// MARK: - URL: Identifiable (for sheet(item:))
+// MARK: - URL: Identifiable
 
 extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
 }
 
-#Preview {
-    DownloadView()
-}
+#Preview { DownloadView() }

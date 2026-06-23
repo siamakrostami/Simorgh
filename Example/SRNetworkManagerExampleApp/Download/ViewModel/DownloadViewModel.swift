@@ -2,17 +2,47 @@ import Combine
 import Foundation
 import SRNetworkManager
 
+// MARK: - Demo catalog
+
+struct DemoFile: Identifiable {
+    let id = UUID()
+    let name: String
+    let url: String
+    let type: String
+}
+
+let downloadCatalog: [DemoFile] = [
+    // PDF
+    DemoFile(name: "PDF — Sample (4 KB)",    url: "https://www.africau.edu/images/default/sample.pdf",       type: "PDF"),
+    DemoFile(name: "PDF — W3C (168 KB)",     url: "https://www.w3.org/WAI/WCAG21/Techniques/pdf/pdf-sample.pdf", type: "PDF"),
+    // Video
+    DemoFile(name: "MP4 — For Bigger Blazes (~5 MB)",  url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",           type: "MP4"),
+    DemoFile(name: "MP4 — Subaru Outback (~11 MB)",    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4", type: "MP4"),
+    // Audio
+    DemoFile(name: "MP3 — SoundHelix #1 (~9 MB)", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", type: "MP3"),
+    DemoFile(name: "MP3 — SoundHelix #2 (~7 MB)", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", type: "MP3"),
+    DemoFile(name: "WAV — On the Trail (8 MB)",   url: "https://upload.wikimedia.org/wikipedia/commons/2/21/On_the_Trail.wav", type: "WAV"),
+    // Images
+    DemoFile(name: "JPEG — Cat photo (450 KB)", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/1200px-Cat_November_2010-1a.jpg", type: "JPEG"),
+    DemoFile(name: "PNG — Transparency (1.2 MB)", url: "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png", type: "PNG"),
+    DemoFile(name: "GIF — Rotating Earth (3 MB)", url: "https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif", type: "GIF"),
+    // Archive
+    DemoFile(name: "ZIP — Alamofire source (~600 KB)", url: "https://codeload.github.com/Alamofire/Alamofire/zip/refs/tags/5.8.1", type: "ZIP"),
+]
+
+// MARK: - ViewModel
+
 @MainActor
 final class DownloadViewModel: ObservableObject {
 
-    // MARK: - State
+    // MARK: - Row
 
     struct Row: Identifiable {
         let id: UUID
         let url: URL
         var fileName: String
         var state: DownloadState
-        var fraction: Double        // 0..1, NaN = indeterminate
+        var fraction: Double
         var speedKBps: Double
         var etaSeconds: TimeInterval?
         var localURL: URL?
@@ -21,22 +51,20 @@ final class DownloadViewModel: ObservableObject {
 
         var fileSizeString: String {
             guard fileSizeBytes > 0 else { return "" }
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
-            return formatter.string(fromByteCount: fileSizeBytes)
+            return ByteCountFormatter.string(fromByteCount: fileSizeBytes, countStyle: .file)
         }
     }
+
+    // MARK: - Published
 
     @Published private(set) var rows: [Row] = []
     @Published var urlText = ""
     @Published var selectedPriority: DownloadPriority = .normal
 
-    // Quick-access demo downloads
-    let demoURLs: [(name: String, url: String)] = [
-        ("Big Buck Bunny (5 MB)", "https://download.samplelib.com/mp4/sample-5s.mp4"),
-        ("Sample PDF", "https://www.w3.org/WAI/WCAG21/Techniques/pdf/pdf-sample.pdf"),
-        ("NASA Image (3 MB)", "https://apod.nasa.gov/apod/image/2406/M104_Hubble_2711.jpg"),
-    ]
+    // Batch catalog selection
+    @Published var selectedDemoIDs: Set<UUID> = []
+
+    // MARK: - Init
 
     private let manager: DownloadManager
     private var cancellables = Set<AnyCancellable>()
@@ -44,7 +72,7 @@ final class DownloadViewModel: ObservableObject {
     init() {
         manager = (try? DownloadManager(config: DownloadManagerConfig(
             maxConcurrentDownloads: 3,
-            retryPolicy: DownloadRetryPolicy(maximumAttempts: 3)
+            retryPolicy: DownloadRetryPolicy(maximumAttempts: 2)
         ), logLevel: .standard)) ?? (try! DownloadManager())
 
         manager.eventsPublisher
@@ -53,7 +81,7 @@ final class DownloadViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    // MARK: - Actions
+    // MARK: - Single enqueue
 
     func enqueue(urlString: String? = nil, priority: DownloadPriority? = nil) {
         let raw = urlString ?? urlText
@@ -63,18 +91,40 @@ final class DownloadViewModel: ObservableObject {
             let id = try manager.enqueue(url: url, priority: p)
             rows.append(Row(
                 id: id, url: url,
-                fileName: url.lastPathComponent,
-                state: .queued,
-                fraction: 0, speedKBps: 0
+                fileName: url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent,
+                state: .queued, fraction: 0, speedKBps: 0
             ))
             if urlString == nil { urlText = "" }
-        } catch DownloadError.alreadyQueued {
-            // already in list — ignore silently
-        } catch {}
+        } catch DownloadError.alreadyQueued { }
+        catch { }
     }
 
-    func pause(id: UUID) { manager.pause(id: id) }
+    // MARK: - Batch enqueue
 
+    func toggleDemoSelection(_ id: UUID) {
+        if selectedDemoIDs.contains(id) { selectedDemoIDs.remove(id) }
+        else { selectedDemoIDs.insert(id) }
+    }
+
+    func selectAllDemos() {
+        selectedDemoIDs = Set(downloadCatalog.map(\.id))
+    }
+
+    func clearDemoSelection() {
+        selectedDemoIDs = []
+    }
+
+    func downloadSelected() {
+        let items = downloadCatalog.filter { selectedDemoIDs.contains($0.id) }
+        let urls = items.compactMap { URL(string: $0.url) }
+        manager.enqueueBatch(urls, priority: selectedPriority)
+        // Rows added via .added events from eventsPublisher
+        selectedDemoIDs = []
+    }
+
+    // MARK: - Controls
+
+    func pause(id: UUID) { manager.pause(id: id) }
     func resume(id: UUID) { try? manager.resume(id: id) }
 
     func cancel(id: UUID) {

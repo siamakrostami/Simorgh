@@ -103,6 +103,25 @@ public final class DownloadManager: @unchecked Sendable {
         return task.id
     }
 
+    // MARK: Batch enqueue
+
+    /// Enqueue multiple URLs at once. Silently skips duplicates and items that violate disk-space constraints.
+    /// Returns IDs of successfully enqueued tasks.
+    @discardableResult
+    public func enqueueBatch(
+        _ items: [(url: URL, fileName: String?, priority: DownloadPriority)]
+    ) -> [UUID] {
+        items.compactMap { item in
+            try? enqueue(url: item.url, fileName: item.fileName, priority: item.priority)
+        }
+    }
+
+    /// Convenience: enqueue an array of plain URLs with the same priority.
+    @discardableResult
+    public func enqueueBatch(_ urls: [URL], priority: DownloadPriority = .normal) -> [UUID] {
+        enqueueBatch(urls.map { (url: $0, fileName: nil, priority: priority) })
+    }
+
     // MARK: Pause
 
     /// Pause an active download. Resume data is saved so it continues from the same byte.
@@ -286,12 +305,21 @@ public final class DownloadManager: @unchecked Sendable {
         guard let taskId = taskId(for: urlTask),
               var task = tracker.task(id: taskId) else { return }
 
+        // Log final response (standard+): URL, status, content-type, content-length
+        if let http = urlTask.response as? HTTPURLResponse {
+            let ct = http.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
+            let cl = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init)
+            let sizeStr = cl.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+            let detail = "HTTP \(http.statusCode)  Content-Type: \(ct)" + (sizeStr.map { "  Size: \($0)" } ?? "")
+            URLSessionLogger.shared.logDownload(event: "RESPONSE", url: task.url, detail: detail, logLevel: logLevel)
+        }
+
         // Validate HTTP status — non-2xx means the server sent an error body, not the file
         if let http = urlTask.response as? HTTPURLResponse, !(200..<300 ~= http.statusCode) {
             try? FileManager.default.removeItem(at: tempURL)
             let err = URLError(
                 .badServerResponse,
-                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"]
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) from \(task.url.host ?? task.url.absoluteString)"]
             )
             handleFailure(urlTask: urlTask, error: err)
             return
@@ -301,6 +329,8 @@ public final class DownloadManager: @unchecked Sendable {
         if let data = try? Data(contentsOf: tempURL, options: .mappedIfSafe) {
             let detected = MimeTypeDetector.detectMimeType(from: data)
             let ext = detected?.ext ?? task.url.pathExtension
+            let mimeStr = detected.map { "detected MIME: \($0.mime)" }
+            URLSessionLogger.shared.logDownload(event: "MIME", url: task.url, detail: mimeStr, logLevel: logLevel)
             if !task.fileName.contains(".") && !ext.isEmpty {
                 task.fileName += ".\(ext)"
             }
@@ -313,7 +343,9 @@ public final class DownloadManager: @unchecked Sendable {
             activeCount -= 1
             lock.unlock()
             tracker.setCompleted(id: taskId, localURL: localURL)
-            URLSessionLogger.shared.logDownload(event: "COMPLETED", url: task.url, detail: localURL.lastPathComponent, logLevel: logLevel)
+            let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
+            let savedSize = (attrs?[.size] as? Int64).map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
+            URLSessionLogger.shared.logDownload(event: "COMPLETED", url: task.url, detail: "\(localURL.lastPathComponent)  \(savedSize)", logLevel: logLevel)
         } catch {
             handleFailure(urlTask: urlTask, error: error)
             return
@@ -346,7 +378,12 @@ public final class DownloadManager: @unchecked Sendable {
             }
         } else {
             tracker.setFailed(id: taskId, message: error.localizedDescription)
-            URLSessionLogger.shared.logResponse(nil, data: nil, error: error, logLevel: logLevel)
+            URLSessionLogger.shared.logDownload(
+                event: "FAILED",
+                url: task.url,
+                detail: error.localizedDescription,
+                logLevel: logLevel
+            )
         }
         drainQueue()
     }
