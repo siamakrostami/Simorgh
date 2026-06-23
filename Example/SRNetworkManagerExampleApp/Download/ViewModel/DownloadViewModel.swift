@@ -16,7 +16,15 @@ final class DownloadViewModel: ObservableObject {
         var speedKBps: Double
         var etaSeconds: TimeInterval?
         var localURL: URL?
+        var fileSizeBytes: Int64 = 0
         var errorMessage: String?
+
+        var fileSizeString: String {
+            guard fileSizeBytes > 0 else { return "" }
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            return formatter.string(fromByteCount: fileSizeBytes)
+        }
     }
 
     @Published private(set) var rows: [Row] = []
@@ -115,7 +123,13 @@ final class DownloadViewModel: ObservableObject {
         guard let idx = rows.firstIndex(where: { $0.id == id }) else { return }
         mutation(&rows[idx])
         if rows[idx].state == .completed {
-            rows[idx].localURL = manager.tasks.first { $0.id == id }?.localURL
+            let localURL = manager.tasks.first { $0.id == id }?.localURL
+            rows[idx].localURL = localURL
+            if let path = localURL?.path,
+               let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? Int64 {
+                rows[idx].fileSizeBytes = size
+            }
         }
     }
 }

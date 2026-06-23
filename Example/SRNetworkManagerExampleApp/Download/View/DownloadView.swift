@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DownloadView: View {
     @StateObject private var vm = DownloadViewModel()
+    @State private var previewURL: URL?
 
     var body: some View {
         NavigationView {
@@ -37,11 +38,9 @@ struct DownloadView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(vm.demoURLs, id: \.url) { demo in
-                            Button(demo.name) {
-                                vm.enqueue(urlString: demo.url)
-                            }
-                            .font(.caption)
-                            .buttonStyle(.bordered)
+                            Button(demo.name) { vm.enqueue(urlString: demo.url) }
+                                .font(.caption)
+                                .buttonStyle(.bordered)
                         }
                     }
                     .padding(.horizontal)
@@ -59,7 +58,7 @@ struct DownloadView: View {
                 } else {
                     List {
                         ForEach(vm.rows) { row in
-                            DownloadRowView(row: row, vm: vm)
+                            DownloadRowView(row: row, vm: vm, onOpen: { previewURL = $0 })
                         }
                     }
                     .listStyle(.plain)
@@ -72,6 +71,10 @@ struct DownloadView: View {
                 }
             }
             .navigationTitle("Downloads")
+            .sheet(item: $previewURL) { url in
+                QuickLookPreview(url: url)
+                    .ignoresSafeArea()
+            }
         }
     }
 }
@@ -81,6 +84,7 @@ struct DownloadView: View {
 private struct DownloadRowView: View {
     let row: DownloadViewModel.Row
     let vm: DownloadViewModel
+    let onOpen: (URL) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -99,15 +103,14 @@ private struct DownloadRowView: View {
                     .progressViewStyle(.linear)
             }
 
-            // Speed / ETA / error
+            // Speed / ETA while downloading
             if row.state == .downloading {
                 HStack {
                     Text(String(format: "%.1f KB/s", row.speedKBps))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let eta = row.etaSeconds {
-                        Text("·")
-                            .foregroundStyle(.secondary)
+                        Text("·").foregroundStyle(.secondary)
                         Text("ETA \(Int(eta))s")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -118,16 +121,32 @@ private struct DownloadRowView: View {
                             .font(.caption.monospacedDigit())
                     }
                 }
-            } else if let err = row.errorMessage {
+            }
+
+            // Completed: file size + local path
+            if row.state == .completed {
+                HStack(spacing: 6) {
+                    if !row.fileSizeString.isEmpty {
+                        Label(row.fileSizeString, systemImage: "internaldrive")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let url = row.localURL {
+                        Spacer()
+                        Text(url.lastPathComponent)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            // Error
+            if let err = row.errorMessage {
                 Text(err)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
-            } else if row.state == .completed, let url = row.localURL {
-                Text(url.path)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
 
             // Action buttons
@@ -146,6 +165,16 @@ private struct DownloadRowView: View {
                     Button("Retry") { vm.resume(id: row.id) }
                         .buttonStyle(.borderedProminent)
                         .font(.caption)
+                case .completed:
+                    if let url = row.localURL {
+                        Button {
+                            onOpen(url)
+                        } label: {
+                            Label("Open", systemImage: "eye")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .font(.caption)
+                    }
                 default:
                     EmptyView()
                 }
@@ -180,6 +209,12 @@ private struct DownloadRowView: View {
             .foregroundStyle(color)
             .clipShape(Capsule())
     }
+}
+
+// MARK: - URL: Identifiable (for sheet(item:))
+
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
 }
 
 #Preview {

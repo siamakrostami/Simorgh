@@ -122,21 +122,21 @@ public struct MimeType: Sendable {
         MimeType(mime: "video/x-ms-wmv", ext: "wmv", type: .wmv, bytesCount: 10),
         MimeType(mime: "application/vnd.adobe.photoshop", ext: "psd", type: .psd, bytesCount: 4),
         MimeType(mime: "application/x-msdownload", ext: "exe", type: .exe, bytesCount: 2),
+        MimeType(mime: "audio/m4a", ext: "m4a", type: .m4a, bytesCount: 12),
+        MimeType(mime: "video/x-m4v", ext: "m4v", type: .m4v, bytesCount: 12),
         MimeType(mime: "application/x-7z-compressed", ext: "7z", type: .sevenZ, bytesCount: 6),
         MimeType(mime: "application/x-xz", ext: "xz", type: .xz, bytesCount: 6),
         MimeType(mime: "video/x-flv", ext: "flv", type: .flv, bytesCount: 4),
-        MimeType(mime: "audio/x-opus+ogg", ext: "opus", type: .opus, bytesCount: 36),
-        MimeType(mime: "application/epub+zip", ext: "epub", type: .epub, bytesCount: 58),
         MimeType(mime: "application/x-sqlite3", ext: "sqlite", type: .sqlite, bytesCount: 4),
-        MimeType(mime: "application/x-deb", ext: "deb", type: .deb, bytesCount: 21),
-        MimeType(mime: "application/x-dmg", ext: "dmg", type: .dmg, bytesCount: 2),
-        MimeType(mime: "audio/m4a", ext: "m4a", type: .m4a, bytesCount: 11),
-        MimeType(mime: "video/x-m4v", ext: "m4v", type: .m4v, bytesCount: 11),
-        MimeType(mime: "application/x-compress", ext: "Z", type: .z, bytesCount: 2),
-        MimeType(mime: "application/font-woff", ext: "woff", type: .woff, bytesCount: 8),
-        MimeType(mime: "application/font-woff", ext: "woff2", type: .woff2, bytesCount: 8),
+        MimeType(mime: "application/x-deb", ext: "deb", type: .deb, bytesCount: 7),
         MimeType(mime: "application/x-apple-diskimage", ext: "dmg", type: .dmg, bytesCount: 2),
-        // More MIME types can be added as needed
+        MimeType(mime: "application/x-compress", ext: "Z", type: .z, bytesCount: 2),
+        MimeType(mime: "font/woff", ext: "woff", type: .woff, bytesCount: 4),
+        MimeType(mime: "font/woff2", ext: "woff2", type: .woff2, bytesCount: 4),
+        // opus: OGG container, indistinguishable from .ogg by magic bytes alone
+        MimeType(mime: "audio/x-opus+ogg", ext: "opus", type: .opus, bytesCount: 36),
+        // epub: ZIP container, indistinguishable from .zip by magic bytes alone
+        MimeType(mime: "application/epub+zip", ext: "epub", type: .epub, bytesCount: 58),
     ]
 
     /// Determines if the provided bytes match this MIME type's file signature.
@@ -163,44 +163,108 @@ public struct MimeType: Sendable {
         case .gif:
             return bytes.starts(with: [0x47, 0x49, 0x46])
         case .webp:
-            return bytes.count > 11 && bytes[8...11] == [0x57, 0x45, 0x42, 0x50]
+            // RIFF container: "RIFF" at 0-3, "WEBP" at 8-11
+            return bytes.count > 11
+                && bytes[0...3] == [0x52, 0x49, 0x46, 0x46]
+                && bytes[8...11] == [0x57, 0x45, 0x42, 0x50]
         case .pdf:
             return bytes.starts(with: [0x25, 0x50, 0x44, 0x46])
         case .zip:
             return bytes.starts(with: [0x50, 0x4b, 0x03, 0x04])
         case .mp4:
-            return bytes.count > 7 && bytes[4...7] == [0x66, 0x74, 0x79, 0x70] // "ftyp"
+            // ftyp box at offset 4; brands: isom, mp41, mp42, avc1, etc.
+            // M4A/M4V brands are handled by their own cases below.
+            guard bytes.count > 11 else { return false }
+            guard bytes[4...7] == [0x66, 0x74, 0x79, 0x70] else { return false }
+            let brand = Array(bytes[8...11])
+            // Exclude brands claimed by dedicated cases
+            let nonMP4Brands: [[UInt8]] = [
+                [0x4d, 0x34, 0x41, 0x20], // M4A
+                [0x4d, 0x34, 0x56, 0x20], // M4V
+                [0x71, 0x74, 0x20, 0x20], // qt   (QuickTime/MOV)
+            ]
+            return !nonMP4Brands.contains(brand)
+        case .m4a:
+            // ftyp + M4A brand
+            return bytes.count > 11
+                && bytes[4...7] == [0x66, 0x74, 0x79, 0x70]
+                && bytes[8...11] == [0x4d, 0x34, 0x41, 0x20]
+        case .m4v:
+            // ftyp + M4V brand
+            return bytes.count > 11
+                && bytes[4...7] == [0x66, 0x74, 0x79, 0x70]
+                && bytes[8...11] == [0x4d, 0x34, 0x56, 0x20]
         case .mp3:
-            return bytes.starts(with: [0x49, 0x44, 0x33]) || bytes.starts(with: [0xff, 0xfb])
+            return bytes.starts(with: [0x49, 0x44, 0x33])   // ID3 tag
+                || bytes.starts(with: [0xff, 0xfb])          // MPEG sync
+                || bytes.starts(with: [0xff, 0xf3])
+                || bytes.starts(with: [0xff, 0xf2])
         case .wav:
-            return bytes.count > 11 && bytes[8...11] == [0x57, 0x41, 0x56, 0x45]
+            // RIFF container: "RIFF" at 0-3, "WAVE" at 8-11
+            return bytes.count > 11
+                && bytes[0...3] == [0x52, 0x49, 0x46, 0x46]
+                && bytes[8...11] == [0x57, 0x41, 0x56, 0x45]
         case .ogg:
-            return bytes.starts(with: [0x4f, 0x67, 0x67, 0x53])
+            return bytes.starts(with: [0x4f, 0x67, 0x67, 0x53]) // "OggS"
         case .bz2:
-            return bytes.starts(with: [0x42, 0x5a, 0x68])
+            return bytes.starts(with: [0x42, 0x5a, 0x68]) // "BZh"
         case .rar:
-            return bytes.starts(with: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07])
+            return bytes.starts(with: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]) // "Rar!"
         case .tar:
+            // POSIX ustar: "ustar" at offset 257
             return bytes.count > 261 && bytes[257...261] == [0x75, 0x73, 0x74, 0x61, 0x72]
         case .mov:
-            return bytes.starts(with: [0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70])
+            // QuickTime: ftyp box with "qt  " brand, or legacy free-form atom
+            if bytes.count > 11 && bytes[4...7] == [0x66, 0x74, 0x79, 0x70] {
+                return bytes[8...11] == [0x71, 0x74, 0x20, 0x20] // "qt  "
+            }
+            // Legacy MOV: free/mdat/wide atom (4-byte size + 4-byte type)
+            if bytes.count > 7 {
+                let atomType = Array(bytes[4...7])
+                return atomType == [0x6d, 0x6f, 0x6f, 0x76] // "moov"
+                    || atomType == [0x66, 0x72, 0x65, 0x65] // "free"
+                    || atomType == [0x6d, 0x64, 0x61, 0x74] // "mdat"
+                    || atomType == [0x77, 0x69, 0x64, 0x65] // "wide"
+                    || atomType == [0x70, 0x6e, 0x6f, 0x74] // "pnot"
+            }
+            return false
         case .flac:
-            return bytes.starts(with: [0x66, 0x4c, 0x61, 0x43])
+            return bytes.starts(with: [0x66, 0x4c, 0x61, 0x43]) // "fLaC"
         case .tif:
-            return (bytes.starts(with: [0x49, 0x49, 0x2a, 0x00]) || bytes.starts(with: [0x4d, 0x4d, 0x00, 0x2a]))
+            return bytes.starts(with: [0x49, 0x49, 0x2a, 0x00]) // Little-endian TIFF
+                || bytes.starts(with: [0x4d, 0x4d, 0x00, 0x2a]) // Big-endian TIFF
         case .avi:
-            return bytes.count > 10 && bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) && bytes[8...10] == [0x41, 0x56, 0x49]
+            // RIFF container: "RIFF" at 0-3, "AVI " at 8-11
+            return bytes.count > 11
+                && bytes[0...3] == [0x52, 0x49, 0x46, 0x46]
+                && bytes[8...10] == [0x41, 0x56, 0x49]
         case .wmv:
+            // ASF magic
             return bytes.starts(with: [0x30, 0x26, 0xb2, 0x75])
         case .psd:
-            return bytes.starts(with: [0x38, 0x42, 0x50, 0x53])
+            return bytes.starts(with: [0x38, 0x42, 0x50, 0x53]) // "8BPS"
         case .exe:
-            return bytes.starts(with: [0x4d, 0x5a])
+            return bytes.starts(with: [0x4d, 0x5a]) // "MZ"
+        case .sevenZ:
+            return bytes.starts(with: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]) // "7z¼¯'\x1c"
         case .xz:
-            return bytes.starts(with: [0xfd, 0x37, 0x7a, 0x58])
+            return bytes.starts(with: [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) // XZ stream header
         case .flv:
-            return bytes.starts(with: [0x46, 0x4c, 0x56, 0x01])
+            return bytes.starts(with: [0x46, 0x4c, 0x56, 0x01]) // "FLV\x01"
+        case .sqlite:
+            return bytes.starts(with: [0x53, 0x51, 0x4c, 0x69]) // "SQLi"
+        case .deb:
+            return bytes.starts(with: [0x21, 0x3c, 0x61, 0x72, 0x63, 0x68, 0x3e]) // "!<arch>"
+        case .z:
+            return bytes.starts(with: [0x1f, 0x9d]) // Unix compress
+        case .woff:
+            return bytes.starts(with: [0x77, 0x4f, 0x46, 0x46]) // "wOFF"
+        case .woff2:
+            return bytes.starts(with: [0x77, 0x4f, 0x46, 0x32]) // "wOF2"
         default:
+            // opus: OGG container — indistinguishable from .ogg by magic bytes alone
+            // epub: ZIP container — indistinguishable from .zip by magic bytes alone
+            // dmg:  no reliable 2-byte magic; requires deeper inspection
             return false
         }
     }
