@@ -1,12 +1,24 @@
-# Simorgh
+<p align="center">
+  <img src="Assets/logo.png" width="180" alt="Simorgh">
+</p>
 
-[![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
-[![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
-[![iOS 13+](https://img.shields.io/badge/iOS-13%2B-blue.svg)](https://developer.apple.com/ios/)
-[![SPM Compatible](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">Simorgh</h1>
 
+<p align="center">
+  <em>The mythical Persian firebird — connecting every realm</em>
+</p>
+
+<p align="center">
+  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-5.9%2B-orange.svg" alt="Swift 5.9+"></a>
+  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6-orange.svg" alt="Swift 6"></a>
+  <a href="https://developer.apple.com/ios/"><img src="https://img.shields.io/badge/iOS-13%2B-blue.svg" alt="iOS 13+"></a>
+  <a href="https://swift.org/package-manager/"><img src="https://img.shields.io/badge/SPM-compatible-brightgreen.svg" alt="SPM Compatible"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+</p>
+
+<p align="center">
 A production-grade Swift networking library. One package covers HTTP, WebSocket, downloads, streaming, and real-time network monitoring — with full Combine + async/await APIs and Swift 6 strict concurrency compliance.
+</p>
 
 ---
 
@@ -38,7 +50,7 @@ A production-grade Swift networking library. One package covers HTTP, WebSocket,
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/siamakrostami/SRGenericNetworkLayer.git", from: "1.0.0")
+    .package(url: "https://github.com/siamakrostami/Simorgh.git", from: "1.0.0")
 ]
 ```
 
