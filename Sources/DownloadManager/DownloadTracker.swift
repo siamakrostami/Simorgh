@@ -143,6 +143,7 @@ final class DownloadTracker: @unchecked Sendable {
     func recordProgress(id: UUID, downloaded: Int64, total: Int64) {
         lock.lock()
         guard var t = _tasks[id] else { lock.unlock(); return }
+        let previous = t.downloadedBytes          // capture BEFORE update
         t.downloadedBytes = downloaded
         if total > 0 { t.totalBytes = total }
         _tasks[id] = t
@@ -150,7 +151,8 @@ final class DownloadTracker: @unchecked Sendable {
         let conts = _continuations[id] ?? [:]
         lock.unlock()
 
-        sampler?.record(bytes: downloaded - t.downloadedBytes)
+        let delta = max(0, downloaded - previous) // bytes received since last callback
+        sampler?.record(bytes: delta)
         let speed = sampler?.speed() ?? 0
         let eta = sampler?.eta(downloaded: downloaded, total: total)
         let fraction = total > 0 ? Double(downloaded) / Double(total) : Double.nan
