@@ -44,6 +44,10 @@ struct ContentView: View {
             ImageUploadView()
                 .tabItem { Label("Upload", systemImage: "square.and.arrow.up") }
 
+            // HTTP streaming tab
+            StreamView()
+                .tabItem { Label("Stream", systemImage: "waveform") }
+
             // Network / VPN monitor tab
             NetworkMonitorView()
                 .tabItem { Label("Network", systemImage: "network") }
