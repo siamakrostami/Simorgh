@@ -1016,6 +1016,30 @@ extension APIClient {
 extension APIClient {
     // MARK: - Helper Methods
 
+    /// Creates a WebSocket connection from a `WebSocketRouter`.
+    ///
+    /// The returned connection uses the same `URLSessionConfiguration`, delegate,
+    /// cache policy, and logging level as the rest of the client. Call `connect()`
+    /// on the returned value, then consume `events()` or `messages(of:)`.
+    public func webSocketConnection(
+        _ endpoint: any WebSocketRouter,
+        options: WebSocketOptions = WebSocketOptions()
+    ) throws -> WebSocketConnection {
+        let request = try endpoint.asURLRequest()
+        let session = configuredSession(
+            delegate: configurationDelegate,
+            configuration: configuration
+        )
+
+        return WebSocketConnection(
+            request: request,
+            session: session,
+            protocols: endpoint.protocols,
+            options: options,
+            logLevel: logLevel
+        )
+    }
+
     /// Updates the client's URLSession configuration and optional delegate in a thread-safe manner.
     /// - Parameters:
     ///   - configuration: The new URLSessionConfiguration to apply. Pass `nil` to revert to default.
@@ -1170,4 +1194,3 @@ extension APIClient {
         }
     }
 }
-

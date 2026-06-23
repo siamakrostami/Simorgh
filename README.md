@@ -9,6 +9,7 @@ A comprehensive, thread-safe networking library for Swift applications with supp
 - **Configurable Retry Logic** — Pluggable `RetryHandler` protocol for custom retry strategies
 - **Upload Support** — Single-file and multipart form data uploads with progress tracking
 - **Streaming** — Combine and `AsyncThrowingStream` based streaming responses
+- **WebSocket / Realtime** — First-class WebSocket endpoint routing, async events, JSON messages, ping, close, and reconnect policy
 - **Network Monitoring** — Real-time connectivity and VPN detection via `NetworkMonitor`
 - **Cache Control** — `CacheStrategy` and `CacheConfiguration` for fine-grained cache management
 - **Error Handling** — `NetworkError` with `LocalizedError` conformance and convenience properties
@@ -220,6 +221,12 @@ let response: UploadResponse = try await client.uploadRequest(
 
 ## Streaming
 
+Streaming is for long-lived HTTP responses where the server keeps sending data
+over one request, commonly newline-delimited JSON, server-sent feeds, or chunked
+responses. It is not the same thing as WebSocket: HTTP streams are mostly
+server-to-client, while WebSockets are full-duplex and let both sides send
+messages after the handshake.
+
 ### Combine
 
 ```swift
@@ -238,6 +245,95 @@ client.streamRequest(StreamingEndpoint())
 ```swift
 for try await chunk: DataChunk in client.asyncStreamRequest(StreamingEndpoint()) {
     print("Chunk: \(chunk)")
+}
+```
+
+`asyncStreamRequest` returns an `AsyncThrowingStream`. In practical terms, that
+means Swift can consume values as they arrive:
+
+```swift
+for try await chunk in client.asyncStreamRequest(StreamingEndpoint()) {
+    // This loop suspends until the next value arrives.
+}
+```
+
+Use `AsyncStream` when values arrive over time and cannot be represented as one
+single async return value. Use `AsyncThrowingStream` when the stream can also
+fail. The stream must finish when the network request ends, and its
+`onTermination` cleanup should cancel the underlying network task.
+
+## WebSocket / Realtime
+
+Define a WebSocket endpoint with `WebSocketRouter`:
+
+```swift
+struct ChatSocket: WebSocketRouter {
+    struct Query: Codable {
+        let room: String
+    }
+
+    var baseURLString: String { "wss://api.example.com" }
+    var path: String { "/chat" }
+    var queryParams: Query? { Query(room: "general") }
+    var headers: [String: String]? {
+        ["Authorization": "Bearer \(token)"]
+    }
+    var protocols: [String] { ["chat.v1"] }
+
+    private let token: String
+}
+```
+
+Create and connect:
+
+```swift
+let connection = try client.webSocketConnection(
+    ChatSocket(token: token),
+    options: WebSocketOptions(
+        pingInterval: 25,
+        reconnectPolicy: WebSocketReconnectPolicy(maximumAttempts: 3)
+    )
+)
+
+connection.connect()
+
+Task {
+    do {
+        for try await event in connection.events() {
+            switch event {
+            case .connected:
+                print("Connected")
+            case .message(let message):
+                let chat: ChatMessage = try message.decoded()
+                print(chat)
+            case .pong:
+                print("Pong")
+            case .reconnecting(let attempt, let delay):
+                print("Reconnect \(attempt) in \(delay)s")
+            case .disconnected(let code, _):
+                print("Disconnected: \(code)")
+            }
+        }
+    } catch {
+        print("Socket failed: \(error)")
+    }
+}
+```
+
+Send messages:
+
+```swift
+try await connection.sendText("hello")
+try await connection.send(ChatMessage(text: "hello"))
+try await connection.ping()
+connection.close()
+```
+
+For typed JSON streams, use `messages(of:)`:
+
+```swift
+for try await message in connection.messages(of: ChatMessage.self) {
+    print(message)
 }
 ```
 
@@ -462,5 +558,4 @@ All operations are thread-safe:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 
