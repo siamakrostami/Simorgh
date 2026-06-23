@@ -60,7 +60,8 @@ let package = Package(
                 "UploadProgress",        // Upload progress tracking
                 "Router",                // Network routing and URL construction
                 "Data",                  // Data extensions and utilities
-                "Reachability"           // Network connectivity monitoring
+                "Reachability",           // Network connectivity monitoring
+                "DownloadManager"        // Multi-task download manager with pause/resume
             ],
             swiftSettings: [
                 .define("SPM_SWIFT_6"),  // Swift 6 compatibility flag

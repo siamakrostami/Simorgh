@@ -205,6 +205,31 @@ public final class URLSessionLogger: Sendable {
     /// - Parameters:
     ///   - request: The URLRequest to log
     ///   - logLevel: The desired log level (nil or .none for no logging)
+    // MARK: - Download
+
+    public func logDownload(event: String, url: URL?, detail: String? = nil, logLevel: LogLevel?) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n⬇️⬇️⬇️ DOWNLOAD \(event) ⬇️⬇️⬇️")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            if logLevel != .minimal, let detail { print("💡 \(detail)") }
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
+
+    public func logDownloadProgress(url: URL?, fraction: Double, speed: Double, eta: TimeInterval?, logLevel: LogLevel?) {
+        guard logLevel == .verbose else { return }
+        logQueue.async {
+            let pct = String(format: "%.1f%%", fraction * 100)
+            let kbps = String(format: "%.1f KB/s", speed / 1024)
+            let etaStr = eta.map { String(format: "ETA %.0fs", $0) } ?? "ETA unknown"
+            print("\n⬇️ DOWNLOAD PROGRESS \(pct) @ \(kbps)  \(etaStr)")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+        }
+    }
+
+    // MARK: - HTTP Request / Response
+
     public func logRequest(_ request: URLRequest, logLevel: LogLevel?) {
         guard let logLevel = logLevel, logLevel != .none else { return }
         

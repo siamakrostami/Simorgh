@@ -15,6 +15,7 @@ A comprehensive, thread-safe networking library for Swift applications with supp
 - **Logging** — Four log levels (`none`, `minimal`, `standard`, `verbose`)
 - **Authentication** — `HeaderHandler` builder for authorization, content-type, and custom headers
 - **MIME Detection** — Automatic MIME type detection from file data
+- **Download Manager** — Priority queue, true pause/resume, retry, speed/ETA, background sessions
 
 ## Requirements
 
@@ -382,13 +383,207 @@ newConfig.timeoutIntervalForRequest = 30
 client.updateConfiguration(newConfig)
 ```
 
+## Download Manager
+
+A production-quality multi-task download manager built into the library. Designed to be the most complete iOS download manager available as a Swift package.
+
+### Feature overview
+
+| Feature | Details |
+|---|---|
+| True pause/resume | `URLSessionDownloadTask.cancel(byProducingResumeData:)` — continues from the exact byte |
+| Priority queue | `critical > high > normal > low` — higher priority tasks start first |
+| Concurrency cap | Configurable max simultaneous downloads (default 3); excess tasks queue automatically |
+| Retry with backoff | Network-level errors (timeout, no connection) are retried with exponential backoff |
+| Real-time speed | Sliding 3-second window → actual bytes/sec, not "bytes received this tick" |
+| ETA | Calculated from remaining bytes ÷ current speed |
+| Duplicate guard | Same URL cannot be enqueued twice while active |
+| Background session | Pass `backgroundSessionIdentifier` to survive app suspension |
+| Logging | All state transitions logged via `URLSessionLogger` |
+| MIME detection | Auto-detected from file bytes; extension added if missing |
+| Combine + async | Both APIs available; async stream requires iOS 15+ |
+
+### Quick start
+
+```swift
+let manager = try DownloadManager(
+    config: DownloadManagerConfig(
+        maxConcurrentDownloads: 3,
+        retryPolicy: DownloadRetryPolicy(maximumAttempts: 3),
+        downloadDirectory: customURL  // defaults to Documents/Downloads
+    ),
+    logLevel: .standard
+)
+```
+
+### Enqueue and observe (Combine)
+
+```swift
+let id = try manager.enqueue(
+    url: URL(string: "https://example.com/video.mp4")!,
+    fileName: "video.mp4",
+    priority: .high
+)
+
+manager.progressPublisher(for: id)
+    .receive(on: DispatchQueue.main)
+    .sink { progress in
+        print("\(Int(progress.fraction * 100))%  \(Int(progress.speed / 1024)) KB/s  ETA \(progress.eta ?? 0)s")
+    }
+    .store(in: &cancellables)
+
+manager.statePublisher(for: id)
+    .sink { state in
+        if state == .completed { print("Done: \(manager.tasks.first { $0.id == id }?.localURL)") }
+    }
+    .store(in: &cancellables)
+```
+
+### Enqueue and observe (Async/Await — iOS 15+)
+
+```swift
+let stream = try manager.download(
+    url: URL(string: "https://example.com/video.mp4")!,
+    priority: .high
+)
+
+for await progress in stream {
+    if progress.isCompleted {
+        print("Saved to: \(progress.localURL!)")
+        break
+    }
+    print("\(Int(progress.fraction * 100))%  ETA: \(progress.eta.map { "\(Int($0))s" } ?? "?")")
+}
+```
+
+### Pause / Resume / Cancel
+
+```swift
+manager.pause(id: id)            // saves resume data — continues from same byte
+try manager.resume(id: id)        // loads resume data, restarts task from offset
+manager.cancel(id: id)            // cancels, deletes file and resume data
+manager.removeCompleted()         // clean up finished tasks
+```
+
+### Observe all downloads
+
+```swift
+// Combine — full task list on every change
+manager.tasksPublisher
+    .receive(on: DispatchQueue.main)
+    .sink { tasks in updateUI(tasks) }
+    .store(in: &cancellables)
+
+// Combine — granular events (progress, stateChange, error, added, removed)
+manager.eventsPublisher
+    .sink { event in
+        switch event {
+        case .progress(let p):         updateProgressBar(p)
+        case .stateChange(let id, let state): print("\(id) → \(state)")
+        case .error(let id, let msg):  showError(msg)
+        default: break
+        }
+    }
+    .store(in: &cancellables)
+```
+
+### Background downloads
+
+```swift
+// In your target's DownloadManagerConfig:
+let manager = try DownloadManager(config: DownloadManagerConfig(
+    backgroundSessionIdentifier: "com.myapp.downloads"
+))
+
+// In AppDelegate:
+func application(_ application: UIApplication,
+                 handleEventsForBackgroundURLSession identifier: String,
+                 completionHandler: @escaping () -> Void) {
+    downloadManager.backgroundCompletionHandler = completionHandler
+}
+```
+
+### Retry policy
+
+```swift
+DownloadRetryPolicy(
+    maximumAttempts: 5,
+    initialDelay: 2,      // seconds before first retry
+    multiplier: 2,        // doubles each attempt: 2s, 4s, 8s, 16s, 30s (capped)
+    maximumDelay: 30
+)
+```
+
+Only network-level errors are retried (`URLError` codes: `notConnectedToInternet`, `networkConnectionLost`, `timedOut`, `cannotConnectToHost`, `cannotFindHost`, `dnsLookupFailed`). HTTP 4xx responses are not retried.
+
+### DownloadProgress fields
+
+```swift
+struct DownloadProgress {
+    let taskId: UUID
+    let state: DownloadState         // .downloading, .completed, .paused, etc.
+    let fraction: Double             // 0.0 – 1.0 (NaN if total size unknown)
+    let downloadedBytes: Int64
+    let totalBytes: Int64            // 0 if server didn't send Content-Length
+    let speed: Double                // bytes/sec, 3-second sliding window
+    let eta: TimeInterval?           // nil if total unknown or speed == 0
+    let localURL: URL?               // non-nil only when state == .completed
+}
+```
+
+### Logging output
+
+```
+⬇️⬇️⬇️ DOWNLOAD STARTED ⬇️⬇️⬇️
+🔈 https://example.com/video.mp4
+🔼🔼🔼 END 🔼🔼🔼
+
+⬇️⬇️⬇️ DOWNLOAD PAUSED ⬇️⬇️⬇️
+🔈 https://example.com/video.mp4
+🔼🔼🔼 END 🔼🔼🔼
+
+⬇️⬇️⬇️ DOWNLOAD RETRY ⬇️⬇️⬇️
+🔈 https://example.com/video.mp4
+💡 attempt 1, delay 1.0s
+🔼🔼🔼 END 🔼🔼🔼
+
+⬇️⬇️⬇️ DOWNLOAD COMPLETED ⬇️⬇️⬇️
+🔈 https://example.com/video.mp4
+💡 video.mp4
+🔼🔼🔼 END 🔼🔼🔼
+```
+
 ## VPN Detection
+
+VPN detection uses two complementary methods, applied in order:
+
+1. **`getifaddrs()`** — enumerates active network interfaces and checks for VPN-typical prefixes (`utun`, `tun`, `tap`, `ppp`, `ipsec`). Works with IKEv2, WireGuard, OpenVPN, IPsec, and any other protocol that creates a tunnel interface. This is the primary, reliable method.
+
+2. **CFNetwork proxy settings** — fallback for HTTP/SOCKS proxy-based VPNs that don't create tunnel interfaces.
 
 ```swift
 let vpnChecker = VPNChecker()
 if vpnChecker.isVPNActive() {
     print("VPN is active")
 }
+
+// Disable checking (always returns false — useful in tests or specific environments)
+let bypassChecker = VPNChecker(shouldBypassVpnCheck: true)
+```
+
+`NetworkMonitor` integrates VPN detection automatically:
+
+```swift
+let monitor = NetworkMonitor(shouldDetectVpnAutomatically: true)
+monitor.startMonitoring()
+
+monitor.status
+    .sink { connectivity in
+        if case .connected(.vpn) = connectivity {
+            print("VPN detected")
+        }
+    }
+    .store(in: &cancellables)
 ```
 
 ## Configuration
