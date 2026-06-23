@@ -225,16 +225,99 @@ public final class URLSessionLogger: Sendable {
         }
     }
 
+    // MARK: - WebSocket
+
+    public func logWebSocketConnected(url: URL?, webSocketProtocol: String?, logLevel: LogLevel?) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n🔌🔌🔌 WEBSOCKET CONNECTED 🔌🔌🔌")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            if logLevel != .minimal, let proto = webSocketProtocol {
+                print("💡 Protocol: \(proto)")
+            }
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
+
+    public func logWebSocketDisconnected(
+        url: URL?,
+        code: URLSessionWebSocketTask.CloseCode,
+        reason: Data?,
+        logLevel: LogLevel?
+    ) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n🔒🔒🔒 WEBSOCKET DISCONNECTED 🔒🔒🔒")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            if logLevel != .minimal {
+                print("💡 Close code: \(code.rawValue)")
+                if let reason, let str = String(data: reason, encoding: .utf8) {
+                    print("💡 Reason: \(str)")
+                }
+            }
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
+
+    public func logWebSocketReconnect(url: URL?, attempt: Int, delay: TimeInterval, logLevel: LogLevel?) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n🔄🔄🔄 WEBSOCKET RECONNECTING 🔄🔄🔄")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            print("💡 Attempt \(attempt), delay: \(delay)s")
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
+
+    public func logWebSocketSend(content: String, url: URL?, logLevel: LogLevel?) {
+        guard logLevel == .verbose else { return }
+        logQueue.async {
+            print("\n📤 WEBSOCKET SEND")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            print("Body: \(content)")
+            print("🔼🔼🔼 END SEND 🔼🔼🔼")
+        }
+    }
+
+    public func logWebSocketReceive(content: String, url: URL?, logLevel: LogLevel?) {
+        guard logLevel == .verbose else { return }
+        logQueue.async {
+            print("\n📥 WEBSOCKET RECEIVE")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            print("Body: \(content)")
+            print("🔼🔼🔼 END RECEIVE 🔼🔼🔼")
+        }
+    }
+
+    // MARK: - Subscription
+
+    public func logSubscriptionEvent(label: String, url: URL?, content: String? = nil, logLevel: LogLevel?) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n📡📡📡 SUBSCRIPTION \(label) 📡📡📡")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            if logLevel == .verbose, let content {
+                print("Body: \(content)")
+            }
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
+
+    // MARK: - HTTP Stream
+
+    public func logStreamChunk(content: String, url: URL?, logLevel: LogLevel?) {
+        guard logLevel == .verbose else { return }
+        logQueue.async {
+            print("\n🌊 STREAM CHUNK")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            print("Body: \(content)")
+            print("🔼🔼🔼 END CHUNK 🔼🔼🔼")
+        }
+    }
+
+    // MARK: - HTTP Response
+
     /// Logs a URL response with the specified log level.
-    ///
-    /// This method logs response information including status code, headers,
-    /// response body, and any errors that occurred during the request.
-    ///
-    /// ## Logged Information
-    /// - **All Levels**: Status code and URL
-    /// - **Standard/Verbose**: Response headers
-    /// - **Verbose Only**: Response body (if present)
-    /// - **Errors**: Error information regardless of level
     ///
     /// - Parameters:
     ///   - response: The URLResponse to log (may be nil for errors)

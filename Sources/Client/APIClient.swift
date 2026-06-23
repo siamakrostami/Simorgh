@@ -849,6 +849,9 @@ private class StreamingSessionDelegate<T: Codable>: NSObject, URLSessionDataDele
                 do {
                     let decoder = JSONDecoder()
                     let decodedObject = try decoder.decode(T.self, from: lineData)
+                    if let text = String(data: lineData, encoding: .utf8) {
+                        URLSessionLogger.shared.logStreamChunk(content: text, url: dataTask.originalRequest?.url, logLevel: logLevel)
+                    }
                     subject.send(decodedObject)
                 } catch {
                     subject.send(completion: .failure(error))
@@ -976,6 +979,9 @@ extension APIClient {
                                 let decoder = JSONDecoder()
                                 let decodedObject = try decoder.decode(
                                     T.self, from: lineData)
+                                if let text = String(data: lineData, encoding: .utf8) {
+                                    URLSessionLogger.shared.logStreamChunk(content: text, url: urlRequest.url, logLevel: self.logLevel)
+                                }
                                 continuation.yield(decodedObject)
                             } catch {
                                 // Handle decoding error for this chunk
@@ -1018,22 +1024,19 @@ extension APIClient {
 
     /// Creates a WebSocket connection from a `WebSocketRouter`.
     ///
-    /// The returned connection uses the same `URLSessionConfiguration`, delegate,
-    /// cache policy, and logging level as the rest of the client. Call `connect()`
-    /// on the returned value, then consume `events()` or `messages(of:)`.
+    /// The returned `WebSocketConnection` owns its own `URLSession` (using the same
+    /// `URLSessionConfiguration` as this client) so that invalidating the connection
+    /// does not affect any HTTP requests in flight. Call `connect()` on the returned
+    /// value, then consume `events()` or `messages(of:)`.
     public func webSocketConnection(
         _ endpoint: any WebSocketRouter,
         options: WebSocketOptions = WebSocketOptions()
     ) throws -> WebSocketConnection {
         let request = try endpoint.asURLRequest()
-        let session = configuredSession(
-            delegate: configurationDelegate,
-            configuration: configuration
-        )
 
         return WebSocketConnection(
             request: request,
-            session: session,
+            configuration: configuration,
             protocols: endpoint.protocols,
             options: options,
             logLevel: logLevel
@@ -1191,6 +1194,114 @@ extension APIClient {
             }
             _activeSessions.removeAll()
             _requestsToRetry.removeAll()
+        }
+    }
+}
+
+// MARK: - APIClient+Subscription
+
+extension APIClient {
+
+    // MARK: Explicit lifecycle
+
+    /// Creates a `SubscriptionConnection` for the given `SubscriptionRouter`.
+    ///
+    /// The returned object gives you explicit control over when to connect, disconnect,
+    /// and reconnect. Call `events()` or `publisher()` **before** calling `connect()`
+    /// so the initial `.connected` event (which sends the subscribe message) is not missed.
+    ///
+    /// ```swift
+    /// let sub = try apiClient.subscription(MySubscription())
+    /// Task { for try await event in sub.events() { ... } }
+    /// sub.connect()
+    /// // later:
+    /// await sub.disconnect()
+    /// ```
+    public func subscription<R: SubscriptionRouter>(
+        _ router: R,
+        options: WebSocketOptions = WebSocketOptions(),
+        decoder: JSONDecoder = JSONDecoder()
+    ) throws -> SubscriptionConnection<R> {
+        let ws = try webSocketConnection(router, options: options)
+        return SubscriptionConnection(wsConnection: ws, router: router, decoder: decoder, logLevel: logLevel)
+    }
+
+    // MARK: Inline — Async/Await
+
+    /// Connects, subscribes, and returns an `AsyncThrowingStream` of typed events.
+    ///
+    /// The entire lifecycle (connect → subscribe → receive → unsubscribe → close) is
+    /// managed internally. Cancelling the `Task` that owns the `for try await` loop
+    /// sends the unsubscribe message and closes the connection automatically.
+    ///
+    /// ```swift
+    /// for try await trade in apiClient.subscribe(TradeSubscription(symbol: "btcusdt"),
+    ///     options: WebSocketOptions(reconnectPolicy: WebSocketReconnectPolicy(maximumAttempts: 3))
+    /// ) {
+    ///     print(trade)
+    /// }
+    /// ```
+    public func subscribe<R: SubscriptionRouter>(
+        _ router: R,
+        options: WebSocketOptions = WebSocketOptions(),
+        decoder: JSONDecoder = JSONDecoder()
+    ) -> AsyncThrowingStream<R.Event, Error> {
+        AsyncThrowingStream { continuation in
+            do {
+                let sub = try subscription(router, options: options, decoder: decoder)
+                let stream = sub.events()
+
+                let task = Task {
+                    sub.connect()
+                    do {
+                        for try await event in stream {
+                            continuation.yield(event)
+                        }
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+
+                continuation.onTermination = { @Sendable _ in
+                    task.cancel()
+                    // Retain sub until the termination handler fires so disconnect() can run
+                    Task { [sub] in await sub.disconnect() }
+                }
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+
+    // MARK: Inline — Combine
+
+    /// Connects, subscribes, and returns a Combine publisher of typed events.
+    ///
+    /// The connection is kept alive for the lifetime of the subscription. Cancelling
+    /// the `AnyCancellable` sends the unsubscribe message and closes the connection.
+    ///
+    /// ```swift
+    /// apiClient.subscribe(TradeSubscription(symbol: "btcusdt"))
+    ///     .sink(
+    ///         receiveCompletion: { print($0) },
+    ///         receiveValue:      { print($0) }
+    ///     )
+    ///     .store(in: &cancellables)
+    /// ```
+    public func subscribe<R: SubscriptionRouter>(
+        _ router: R,
+        options: WebSocketOptions = WebSocketOptions(),
+        decoder: JSONDecoder = JSONDecoder()
+    ) -> AnyPublisher<R.Event, NetworkError> {
+        do {
+            let sub = try subscription(router, options: options, decoder: decoder)
+            sub.connect()
+            // The publisher captures `sub` so it is retained for the subscription lifetime.
+            return sub.publisher()
+        } catch {
+            let netError = error as? NetworkError ?? .responseError(error)
+            return Fail(error: netError).eraseToAnyPublisher()
         }
     }
 }

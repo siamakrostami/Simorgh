@@ -42,6 +42,11 @@ struct ContentView: View {
                     Label("Realtime", systemImage: "dot.radiowaves.left.and.right")
                 }
 
+            SubscriptionView()
+                .tabItem {
+                    Label("Subscription", systemImage: "antenna.radiowaves.left.and.right")
+                }
+
             ImageUploadView()
                 .tabItem {
                     Label("Upload", systemImage: "square.and.arrow.up")

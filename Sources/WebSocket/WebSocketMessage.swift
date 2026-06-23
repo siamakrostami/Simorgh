@@ -100,3 +100,19 @@ public struct WebSocketOptions: Sendable, Equatable {
         self.reconnectPolicy = reconnectPolicy
     }
 }
+
+// MARK: - WebSocketConnectionState
+
+/// The lifecycle state of a `WebSocketConnection`.
+public enum WebSocketConnectionState: Sendable, Equatable {
+    /// Not yet connected.
+    case idle
+    /// Handshake in progress.
+    case connecting
+    /// Handshake confirmed by server — messages may flow.
+    case connected
+    /// Waiting before the next automatic reconnect attempt.
+    case reconnecting(attempt: Int, delay: TimeInterval)
+    /// Closed cleanly or after exhausting reconnect attempts.
+    case disconnected
+}

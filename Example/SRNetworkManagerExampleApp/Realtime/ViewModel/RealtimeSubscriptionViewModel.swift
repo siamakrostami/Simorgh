@@ -13,18 +13,19 @@ final class RealtimeSubscriptionViewModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .idle:
-                return "Idle"
-            case .connecting:
-                return "Connecting"
-            case .connected:
-                return "Live"
-            case .reconnecting(let attempt, let delay):
-                return "Reconnecting \(attempt) in \(Int(delay))s"
-            case .disconnected:
-                return "Disconnected"
-            case .failed(let message):
-                return "Failed: \(message)"
+            case .idle: return "Idle"
+            case .connecting: return "Connecting…"
+            case .connected: return "Live"
+            case .reconnecting(let attempt, let delay): return "Reconnecting \(attempt) in \(Int(delay))s"
+            case .disconnected: return "Disconnected"
+            case .failed(let message): return "Failed: \(message)"
+            }
+        }
+
+        var isActive: Bool {
+            switch self {
+            case .connected, .reconnecting: return true
+            default: return false
             }
         }
     }
@@ -55,7 +56,12 @@ final class RealtimeSubscriptionViewModel: ObservableObject {
                 options: WebSocketOptions(
                     maximumMessageSize: 64 * 1024,
                     pingInterval: 25,
-                    reconnectPolicy: WebSocketReconnectPolicy(maximumAttempts: 3)
+                    reconnectPolicy: WebSocketReconnectPolicy(
+                        maximumAttempts: 3,
+                        initialDelay: 1,
+                        multiplier: 2,
+                        maximumDelay: 30
+                    )
                 )
             )
 
@@ -87,19 +93,21 @@ final class RealtimeSubscriptionViewModel: ObservableObject {
         state = .disconnected
     }
 
+    // MARK: - Private
+
     private func handle(_ event: WebSocketEvent, symbol: String) async {
         switch event {
         case .connected:
             state = .connected
             await subscribe(to: symbol)
         case .message(let message):
-            handle(message)
+            handleMessage(message)
         case .pong:
             break
         case .reconnecting(let attempt, let delay):
             state = .reconnecting(attempt: attempt, delay: delay)
         case .disconnected:
-            state = .disconnected
+            if case .connected = state { state = .disconnected }
         }
     }
 
@@ -109,15 +117,15 @@ final class RealtimeSubscriptionViewModel: ObservableObject {
             params: ["\(symbol)@trade"],
             id: 1
         )
-
         do {
+            // send(_:) encodes value as JSON and sends it as a UTF-8 text frame
             try await connection?.send(request)
         } catch {
             state = .failed(error.localizedDescription)
         }
     }
 
-    private func handle(_ message: WebSocketMessage) {
+    private func handleMessage(_ message: WebSocketMessage) {
         let decoder = JSONDecoder()
 
         if let trade = try? message.decoded(as: RealtimeTrade.self, decoder: decoder) {
@@ -128,11 +136,8 @@ final class RealtimeSubscriptionViewModel: ObservableObject {
             return
         }
 
-        if let acknowledgement = try? message.decoded(
-            as: RealtimeSubscriptionAcknowledgement.self,
-            decoder: decoder
-        ) {
-            acknowledgementID = acknowledgement.id
+        if let ack = try? message.decoded(as: RealtimeSubscriptionAcknowledgement.self, decoder: decoder) {
+            acknowledgementID = ack.id
         }
     }
 
