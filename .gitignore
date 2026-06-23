@@ -85,4 +85,23 @@ fastlane/test_output
 # After new code Injection tools there's a generated folder /iOSInjectionProject
 # https://github.com/johnno1962/injectionforxcode
 
-iOSInjectionProject/CLAUDE.md
+iOSInjectionProject/
+
+# Local dev / AI assistant notes (keep out of version control)
+CLAUDE.md
+RELEASE_NOTES.md
+**/.claude/
+
+# Swift Package Manager build artifacts
+.build/
+
+# Secrets & credentials — never commit
+.env
+.env.*
+*.pem
+*.p12
+*.mobileprovision
+secrets/
+credentials.json
+**/secrets.json
+**/*-secrets.json

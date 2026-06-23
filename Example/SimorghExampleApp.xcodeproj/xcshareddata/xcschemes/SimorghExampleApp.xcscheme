@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1620"
+   LastUpgradeVersion = "2650"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "017913062C9E03770011B237"
-               BuildableName = "SRNetworkManagerExampleApp.app"
-               BlueprintName = "SRNetworkManagerExampleApp"
-               ReferencedContainer = "container:SRNetworkManagerExampleApp.xcodeproj">
+               BuildableName = "SimorghExampleApp.app"
+               BlueprintName = "SimorghExampleApp"
+               ReferencedContainer = "container:SimorghExampleApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,9 +46,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "017913062C9E03770011B237"
-            BuildableName = "SRNetworkManagerExampleApp.app"
-            BlueprintName = "SRNetworkManagerExampleApp"
-            ReferencedContainer = "container:SRNetworkManagerExampleApp.xcodeproj">
+            BuildableName = "SimorghExampleApp.app"
+            BlueprintName = "SimorghExampleApp"
+            ReferencedContainer = "container:SimorghExampleApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -63,9 +63,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "017913062C9E03770011B237"
-            BuildableName = "SRNetworkManagerExampleApp.app"
-            BlueprintName = "SRNetworkManagerExampleApp"
-            ReferencedContainer = "container:SRNetworkManagerExampleApp.xcodeproj">
+            BuildableName = "SimorghExampleApp.app"
+            BlueprintName = "SimorghExampleApp"
+            ReferencedContainer = "container:SimorghExampleApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
