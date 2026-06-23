@@ -21,6 +21,7 @@ final class NetworkMonitorViewModel: ObservableObject {
     // MARK: - Init
 
     private let monitor = NetworkMonitor(shouldDetectVpnAutomatically: true)
+    // vpnChecker kept for manual refresh only — live state comes from NetworkMonitor's dual-path detection
     private let vpnChecker = VPNChecker()
     private var cancellables = Set<AnyCancellable>()
 
@@ -31,7 +32,9 @@ final class NetworkMonitorViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] conn in
                 guard let self else { return }
-                let vpn = vpnChecker.isVPNActive()
+                // VPN state is embedded in connectivity (.connected(.vpn)) — no separate point-in-time check needed
+                let vpn: Bool
+                if case .connected(.vpn) = conn { vpn = true } else { vpn = false }
                 connectivity = conn
                 isVPNActive = vpn
                 history.insert(
@@ -48,6 +51,7 @@ final class NetworkMonitorViewModel: ObservableObject {
     }
 
     func refresh() {
+        // Force a one-shot getifaddrs() check in case the monitors haven't fired yet
         isVPNActive = vpnChecker.isVPNActive()
     }
 
