@@ -6,34 +6,47 @@ import SRNetworkManager
 
 struct ContentView: View {
     @StateObject private var viewModel = PostsViewModel()
-    
+
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(viewModel.posts) { post in
-                    VStack(alignment: .leading) {
-                        Text(post.title)
-                            .font(.headline)
-                        Text(post.body)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+        TabView {
+            // Posts tab
+            NavigationView {
+                List {
+                    ForEach(viewModel.posts) { post in
+                        VStack(alignment: .leading) {
+                            Text(post.title)
+                                .font(.headline)
+                            Text(post.body)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            }
-            .navigationTitle("Posts")
-            .onAppear {
-                //Async Call
-                Task{
-                    viewModel.fetchPosts()
+                .navigationTitle("Posts")
+                .onAppear {
+                    Task { viewModel.fetchPosts() }
                 }
-                
-                //Combine Call
-                //viewModel.fetchPosts()
-                
+                .alert(isPresented: $viewModel.showError) {
+                    Alert(
+                        title: Text("Error"),
+                        message: Text(viewModel.errorMessage),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
             }
-            .alert(isPresented: $viewModel.showError) {
-                Alert(title: Text("Error"), message: Text(viewModel.errorMessage), dismissButton: .default(Text("OK")))
-            }
+            .tabItem { Label("Posts", systemImage: "doc.text") }
+
+            // Downloads tab
+            DownloadView()
+                .tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
+
+            // Upload tab
+            ImageUploadView()
+                .tabItem { Label("Upload", systemImage: "square.and.arrow.up") }
+
+            // Network / VPN monitor tab
+            NetworkMonitorView()
+                .tabItem { Label("Network", systemImage: "network") }
         }
     }
 }
