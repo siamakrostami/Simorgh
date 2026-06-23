@@ -1,40 +1,57 @@
 // MARK: - ContentView.swift
 
 import SwiftUI
-import Combine
-import SRNetworkManager
 
 struct ContentView: View {
     @StateObject private var viewModel = PostsViewModel()
     
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(viewModel.posts) { post in
-                    VStack(alignment: .leading) {
-                        Text(post.title)
-                            .font(.headline)
-                        Text(post.body)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+        TabView {
+            NavigationView {
+                List {
+                    ForEach(viewModel.posts) { post in
+                        VStack(alignment: .leading) {
+                            Text(post.title)
+                                .font(.headline)
+                            Text(post.body)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            }
-            .navigationTitle("Posts")
-            .onAppear {
-                //Async Call
-                Task{
-                    viewModel.fetchPosts()
+                .navigationTitle("Posts")
+                .onAppear {
+                    Task {
+                        viewModel.fetchPosts()
+                    }
                 }
-                
-                //Combine Call
-                //viewModel.fetchPosts()
-                
+                .alert(isPresented: $viewModel.showError) {
+                    Alert(
+                        title: Text("Error"),
+                        message: Text(viewModel.errorMessage),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
             }
-            .alert(isPresented: $viewModel.showError) {
-                Alert(title: Text("Error"), message: Text(viewModel.errorMessage), dismissButton: .default(Text("OK")))
+            .tabItem {
+                Label("Posts", systemImage: "doc.text")
             }
-        }
+
+            RealtimeSubscriptionView()
+                .tabItem {
+                    Label("Realtime", systemImage: "dot.radiowaves.left.and.right")
+                }
+
+            SubscriptionView()
+                .tabItem {
+                    Label("Subscription", systemImage: "antenna.radiowaves.left.and.right")
+                }
+
+            ImageUploadView()
+                .tabItem {
+                    Label("Upload", systemImage: "square.and.arrow.up")
+                }
+            }
     }
 }
 
