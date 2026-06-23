@@ -163,17 +163,17 @@ public struct MimeType: Sendable {
         case .gif:
             return bytes.starts(with: [0x47, 0x49, 0x46])
         case .webp:
-            return bytes[8...11] == [0x57, 0x45, 0x42, 0x50]
+            return bytes.count > 11 && bytes[8...11] == [0x57, 0x45, 0x42, 0x50]
         case .pdf:
             return bytes.starts(with: [0x25, 0x50, 0x44, 0x46])
         case .zip:
             return bytes.starts(with: [0x50, 0x4b, 0x03, 0x04])
         case .mp4:
-            return bytes[4...7] == [0x66, 0x74, 0x79, 0x70] // "ftyp"
+            return bytes.count > 7 && bytes[4...7] == [0x66, 0x74, 0x79, 0x70] // "ftyp"
         case .mp3:
             return bytes.starts(with: [0x49, 0x44, 0x33]) || bytes.starts(with: [0xff, 0xfb])
         case .wav:
-            return bytes[8...11] == [0x57, 0x41, 0x56, 0x45]
+            return bytes.count > 11 && bytes[8...11] == [0x57, 0x41, 0x56, 0x45]
         case .ogg:
             return bytes.starts(with: [0x4f, 0x67, 0x67, 0x53])
         case .bz2:
@@ -181,7 +181,7 @@ public struct MimeType: Sendable {
         case .rar:
             return bytes.starts(with: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07])
         case .tar:
-            return bytes[257...261] == [0x75, 0x73, 0x74, 0x61, 0x72]
+            return bytes.count > 261 && bytes[257...261] == [0x75, 0x73, 0x74, 0x61, 0x72]
         case .mov:
             return bytes.starts(with: [0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70])
         case .flac:
@@ -189,7 +189,7 @@ public struct MimeType: Sendable {
         case .tif:
             return (bytes.starts(with: [0x49, 0x49, 0x2a, 0x00]) || bytes.starts(with: [0x4d, 0x4d, 0x00, 0x2a]))
         case .avi:
-            return (bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) && bytes[8...10] == [0x41, 0x56, 0x49])
+            return bytes.count > 10 && bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) && bytes[8...10] == [0x41, 0x56, 0x49]
         case .wmv:
             return bytes.starts(with: [0x30, 0x26, 0xb2, 0x75])
         case .psd:

@@ -1,8 +1,6 @@
 // MARK: - ContentView.swift
 
 import SwiftUI
-import Combine
-import SRNetworkManager
 
 struct ContentView: View {
     @StateObject private var viewModel = PostsViewModel()
@@ -35,6 +33,14 @@ struct ContentView: View {
                 }
             }
             .tabItem { Label("Posts", systemImage: "doc.text") }
+
+            // Realtime WebSocket tab
+            RealtimeSubscriptionView()
+                .tabItem { Label("Realtime", systemImage: "dot.radiowaves.left.and.right") }
+
+            // Subscription API tab
+            SubscriptionView()
+                .tabItem { Label("Subscription", systemImage: "antenna.radiowaves.left.and.right") }
 
             // Downloads tab
             DownloadView()

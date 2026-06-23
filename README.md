@@ -9,6 +9,8 @@ A comprehensive, thread-safe networking library for Swift applications with supp
 - **Configurable Retry Logic** — Pluggable `RetryHandler` protocol for custom retry strategies
 - **Upload Support** — Single-file and multipart form data uploads with progress tracking
 - **Streaming** — Combine and `AsyncThrowingStream` based streaming responses
+- **WebSocket / Realtime** — First-class WebSocket endpoint routing, async events, JSON messages, ping, close, and reconnect policy
+- **Subscription Protocol** — Amplify-style `SubscriptionRouter` that handles subscribe/unsubscribe handshakes over WebSocket, with both async/await (`AsyncThrowingStream`) and Combine (`AnyPublisher`) interfaces
 - **Network Monitoring** — Real-time connectivity and VPN detection via `NetworkMonitor`
 - **Cache Control** — `CacheStrategy` and `CacheConfiguration` for fine-grained cache management
 - **Error Handling** — `NetworkError` with `LocalizedError` conformance and convenience properties
@@ -149,6 +151,99 @@ for await connectivity in monitor.statusStream {
 }
 ```
 
+## Logging
+
+Configure `APIClient` with a `LogLevel` to trace all requests, responses, WebSocket events, subscription messages, and stream chunks through a single consistent output format.
+
+```swift
+let client = APIClient(logLevel: .verbose)  // .none | .minimal | .standard | .verbose
+```
+
+### Log levels
+
+| Level | What you see |
+|---|---|
+| `.none` | Nothing (default, use in production) |
+| `.minimal` | URL + method / WebSocket URL only |
+| `.standard` | + headers, status codes, WS connect/disconnect/reconnect, subscription SUBSCRIBE/UNSUBSCRIBE |
+| `.verbose` | + request/response bodies, sent/received WebSocket frames, decoded stream chunks, subscription events |
+
+### HTTP requests and responses
+
+```
+🚀🚀🚀 REQUEST 🚀🚀🚀
+🔈 POST https://api.example.com/users
+Headers:
+💡 Content-Type: application/json
+💡 Authorization: Bearer token123
+🔼🔼🔼 END REQUEST 🔼🔼🔼
+
+✅✅✅ SUCCESS RESPONSE ✅✅✅
+🔈 https://api.example.com/users
+🔈 Status code: 201
+🔼🔼🔼 END RESPONSE 🔼🔼🔼
+```
+
+### WebSocket events
+
+```
+🚀🚀🚀 REQUEST 🚀🚀🚀          ← connect() called, handshake request logged
+🔈 GET wss://stream.example.com/ws
+🔼🔼🔼 END REQUEST 🔼🔼🔼
+
+🔌🔌🔌 WEBSOCKET CONNECTED 🔌🔌🔌   ← server confirmed handshake (handleDidOpen)
+🔈 wss://stream.example.com/ws
+🔼🔼🔼 END 🔼🔼🔼
+
+📤 WEBSOCKET SEND                   ← verbose only
+🔈 wss://stream.example.com/ws
+Body: {"action":"ping"}
+🔼🔼🔼 END SEND 🔼🔼🔼
+
+📥 WEBSOCKET RECEIVE                ← verbose only
+🔈 wss://stream.example.com/ws
+Body: {"action":"pong"}
+🔼🔼🔼 END RECEIVE 🔼🔼🔼
+
+🔄🔄🔄 WEBSOCKET RECONNECTING 🔄🔄🔄  ← on network failure
+🔈 wss://stream.example.com/ws
+💡 Attempt 1, delay: 1.0s
+🔼🔼🔼 END 🔼🔼🔼
+
+🔒🔒🔒 WEBSOCKET DISCONNECTED 🔒🔒🔒  ← server or client close
+🔈 wss://stream.example.com/ws
+💡 Close code: 1000
+🔼🔼🔼 END 🔼🔼🔼
+```
+
+### Subscription lifecycle
+
+```
+📡📡📡 SUBSCRIPTION SUBSCRIBE 📡📡📡   ← sent automatically on connect
+🔈 wss://stream.binance.com:9443/ws
+Body: {"method":"SUBSCRIBE","params":["btcusdt@trade"],"id":1}
+🔼🔼🔼 END 🔼🔼🔼
+
+📡📡📡 SUBSCRIPTION EVENT 📡📡📡       ← verbose only, per decoded event
+🔈 wss://stream.binance.com:9443/ws
+Body: {"e":"trade","s":"BTCUSDT","p":"65432.10",...}
+🔼🔼🔼 END 🔼🔼🔼
+
+📡📡📡 SUBSCRIPTION UNSUBSCRIBE 📡📡📡  ← sent automatically on disconnect()
+🔈 wss://stream.binance.com:9443/ws
+Body: {"method":"UNSUBSCRIBE","params":["btcusdt@trade"],"id":1}
+🔼🔼🔼 END 🔼🔼🔼
+```
+
+### HTTP streaming chunks
+
+```
+🌊 STREAM CHUNK                     ← verbose only, per decoded NDJSON line
+🔈 https://api.example.com/stream
+Body: {"token":"Hello","index":0}
+🔼🔼🔼 END CHUNK 🔼🔼🔼
+```
+
 ## Uploads
 
 ### Single-File Upload
@@ -219,7 +314,201 @@ let response: UploadResponse = try await client.uploadRequest(
 - `.text(name:value:)` — a plain text field
 - `.file(name:data:fileName:mimeType:)` — a file field; `mimeType` is optional and auto-detected from data when `nil`
 
+## Background Sessions
+
+### Downloads — Full Background Support
+
+`DownloadManager` supports true background downloads via `URLSessionConfiguration.background`. The system continues downloads even after the app is killed or suspended.
+
+```swift
+// 1. Create manager with background identifier
+let manager = try DownloadManager(
+    config: DownloadManagerConfig(
+        maxConcurrentDownloads: 3,
+        backgroundSessionIdentifier: "com.myapp.downloads"  // any unique string
+    ),
+    logLevel: .standard
+)
+
+// 2. Keep a reference at app scope (AppDelegate, @main struct, etc.)
+// so the URLSession delegate is alive when background events arrive.
+```
+
+**AppDelegate wiring (UIKit):**
+
+```swift
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    var downloadManager: DownloadManager!
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        downloadManager = try! DownloadManager(config: DownloadManagerConfig(
+            backgroundSessionIdentifier: "com.myapp.downloads"
+        ))
+        return true
+    }
+
+    // Called by iOS when background download tasks complete while the app was suspended/killed.
+    // You MUST call the completionHandler or the OS will terminate the app.
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == "com.myapp.downloads" else { return }
+        downloadManager.backgroundCompletionHandler = completionHandler
+    }
+}
+```
+
+**SwiftUI (`@main`) wiring:**
+
+```swift
+@main
+struct MyApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(appDelegate.downloadManager)
+        }
+    }
+}
+```
+
+> **Important**: With a background session, only `URLSessionDownloadTask` is used — which is exactly what `DownloadManager` uses. All `pause`/`resume`/`cancel` operations work identically in background mode.
+
+---
+
+### Uploads — Foreground + Background
+
+`APIClient` accepts a custom `URLSessionConfiguration`. For short uploads (< a few MB), the default foreground session is fine. For large files that must survive app suspension, use a background configuration with **file-based** upload tasks.
+
+**Why file-based?** Background URL sessions require the upload body to be read from a file on disk, not from an in-memory `Data` object. The OS needs a file path it can re-read after a relaunch.
+
+```swift
+// Step 1 — write body to a temp file
+func writeTempFile(_ data: Data) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+    try data.write(to: url)
+    return url
+}
+
+// Step 2 — create a background URLSession config
+let bgConfig = URLSessionConfiguration.background(withIdentifier: "com.myapp.uploads")
+bgConfig.isDiscretionary = false          // start immediately
+bgConfig.sessionSendsLaunchEvents = true  // wake app on completion
+
+// Step 3 — pass config to APIClient
+let uploadClient = APIClient(configuration: bgConfig, logLevel: .standard)
+
+// Step 4 — perform upload; progress is delivered via delegate callbacks
+// The actual task uses uploadTask(withStreamedRequest:) internally, so
+// pair this with a URLSessionTaskDelegate if you need progress in the background.
+let response: UploadResponse = try await uploadClient.uploadRequest(
+    endpoint,
+    withName: "file",
+    data: fileData
+) { progress in
+    print("Upload progress: \(Int(progress * 100))%")
+}
+```
+
+> **Note**: `APIClient.uploadRequest` currently uses `uploadTask(with:from:)` (data-based). This works while the app is active or in the background (screen off), but will be suspended if the app is killed. For mission-critical uploads that must survive app termination, write the body to a temp file and use `URLSession.uploadTask(with:fromFile:)` directly with the background configuration above.
+
+**AppDelegate wiring for background uploads (UIKit):**
+
+```swift
+func application(_ application: UIApplication,
+                 handleEventsForBackgroundURLSession identifier: String,
+                 completionHandler: @escaping () -> Void) {
+    // Store the completionHandler; call it after processing all events
+    // Your URLSessionDelegate's urlSessionDidFinishEvents(forBackgroundURLSession:) fires last.
+    backgroundUploadCompletionHandlers[identifier] = completionHandler
+}
+```
+
+---
+
 ## Streaming
+
+### HTTP Streaming vs WebSocket vs Subscription
+
+Three distinct real-time mechanisms — pick by protocol requirements:
+
+| | HTTP Streaming | WebSocket | Subscription |
+|---|---|---|---|
+| Protocol | HTTP/1.1 keep-alive | `ws://` / `wss://` TCP tunnel | `wss://` + JSON handshake |
+| Direction | Server → client only | Full-duplex (send and receive) | Full-duplex with subscribe/unsubscribe lifecycle |
+| Connection | Single long-lived HTTP response | HTTP upgrade → persistent TCP | HTTP upgrade → subscribe msg → events → unsubscribe msg |
+| Server closes | When data ends | Any time | When you unsubscribe or session expires |
+| Reconnect | New HTTP request | Automatic (configurable policy) | Automatic + re-sends subscribe message |
+| Use case | NDJSON, LLM token streaming, SSE | Chat, multiplayer, raw data feeds | Trade feeds, AppSync/Hasura live queries, Amplify |
+| API | `streamRequest` / `asyncStreamRequest` | `webSocketConnection` | `subscription` / `subscribe` |
+
+#### Protocol flow comparison
+
+```
+HTTP Streaming
+  Client ──GET /stream──────────────────────────────────────► Server
+  Client ◄──chunk─────chunk─────chunk─────[connection close]── Server
+
+WebSocket
+  Client ──GET /ws (Upgrade: websocket)──────────────────────► Server
+  Server ──101 Switching Protocols───────────────────────────► Client
+  Client ◄──────────── msg ──────── msg ──────────────────────► (full-duplex)
+  Client ──close────────────────────────────────────────────► Server
+
+Subscription (Amplify-style)
+  Client ──GET /ws (Upgrade: websocket)──────────────────────► Server
+  Server ──101 Switching Protocols───────────────────────────► Client
+  Client ──{"action":"subscribe","channel":"prices"}─────────► Server
+  Client ◄──event──event──event──event───────────────────────  Server
+  Client ──{"action":"unsubscribe","channel":"prices"}───────► Server
+  Client ──close────────────────────────────────────────────► Server
+```
+
+Choose HTTP streaming when the server owns the entire feed and you only consume it. Choose WebSocket when you need bidirectional messaging. Choose Subscription when the server requires an explicit channel join/leave handshake — which is most real-time APIs in practice.
+
+### AsyncThrowingStream — how it works
+
+`AsyncThrowingStream<T, Error>` is Swift Concurrency's type for a sequence of values that arrive asynchronously over time and can fail. It is the async/await equivalent of `AnyPublisher<T, Error>`.
+
+**Suspension, not polling.** The `for try await` loop suspends the current `Task` after each element. No CPU is consumed between values — the Swift runtime wakes the task only when the producer calls `continuation.yield(_:)`.
+
+**Producer / consumer model.** The stream separates the code that _produces_ values (network layer) from the code that _consumes_ them (your UI or business logic):
+
+```swift
+// Producer side — inside the library
+let stream = AsyncThrowingStream<DataChunk, Error> { continuation in
+    let networkTask = Task {
+        do {
+            for await chunk in urlSession.bytes(...) {
+                let decoded = try decode(chunk)
+                continuation.yield(decoded)    // ← resumes the consumer
+            }
+            continuation.finish()              // ← loop exits cleanly
+        } catch {
+            continuation.finish(throwing: error) // ← loop exits with throw
+        }
+    }
+    // Called when the consumer's Task is cancelled (e.g. view disappears)
+    continuation.onTermination = { @Sendable _ in networkTask.cancel() }
+}
+
+// Consumer side — your code
+for try await chunk in stream {
+    render(chunk)                              // ← resumes here after each yield
+}
+// Reaches here when continuation.finish() is called
+```
+
+**Cancellation propagates automatically.** When you cancel the `Task` containing the `for try await` loop, Swift calls `onTermination`, which cancels the network task. No manual cleanup required.
+
+**`AsyncStream` vs `AsyncThrowingStream`.** `AsyncStream<T>` is infallible — use it only when the source genuinely cannot fail. Network sources always use `AsyncThrowingStream` because they can fail with `URLError`, `DecodingError`, etc.
+
+**Combine equivalent.** For codebases using Combine, `streamRequest` returns an `AnyPublisher<T, NetworkError>`. The two are semantically equivalent; pick the one that matches your existing stack.
 
 ### Combine
 
@@ -239,6 +528,241 @@ client.streamRequest(StreamingEndpoint())
 ```swift
 for try await chunk: DataChunk in client.asyncStreamRequest(StreamingEndpoint()) {
     print("Chunk: \(chunk)")
+}
+```
+
+## WebSocket / Realtime
+
+### How it works
+
+`WebSocketConnection` owns its own `URLSession` and registers itself as the `URLSessionWebSocketDelegate`. The `.connected` event fires only after the server confirms the HTTP upgrade handshake — not immediately after calling `connect()`. This means you will not receive `.connected` if the server rejects the handshake.
+
+Each call to `events()` creates an independent `AsyncThrowingStream<WebSocketEvent, Error>`. Multiple subscribers can coexist and each receives every event. The stream finishes when the connection closes cleanly or exhausts its reconnect attempts (in which case it throws).
+
+### Define an endpoint
+
+```swift
+struct ChatSocket: WebSocketRouter {
+    struct Query: Codable {
+        let room: String
+    }
+
+    var baseURLString: String { "wss://api.example.com" }
+    var path: String { "/chat" }
+    var queryParams: Query? { Query(room: "general") }
+    var headers: [String: String]? {
+        ["Authorization": "Bearer \(token)"]
+    }
+    var protocols: [String] { ["chat.v1"] }
+
+    private let token: String
+}
+```
+
+### Connect and handle events
+
+```swift
+let connection = try client.webSocketConnection(
+    ChatSocket(token: token),
+    options: WebSocketOptions(
+        pingInterval: 25,
+        reconnectPolicy: WebSocketReconnectPolicy(
+            maximumAttempts: 3,
+            initialDelay: 1,     // seconds before first retry
+            multiplier: 2,       // each retry waits 2× longer
+            maximumDelay: 30     // cap at 30 seconds
+        )
+    )
+)
+
+connection.connect()
+
+Task {
+    do {
+        for try await event in connection.events() {
+            switch event {
+            case .connected:
+                // Handshake confirmed by server — safe to send messages
+                print("Connected")
+            case .message(let message):
+                let chat: ChatMessage = try message.decoded()
+                print(chat)
+            case .pong:
+                print("Pong")
+            case .reconnecting(let attempt, let delay):
+                print("Reconnect \(attempt) in \(delay)s")
+            case .disconnected(let code, _):
+                print("Disconnected: \(code)")
+            }
+        }
+    } catch {
+        // Stream throws when reconnect attempts are exhausted
+        print("Socket failed: \(error)")
+    }
+}
+```
+
+### Send messages
+
+```swift
+// Raw frames
+try await connection.sendText("hello")
+try await connection.sendData(binaryData)
+
+// Encodable → JSON UTF-8 text frame (the standard for JSON over WebSocket)
+try await connection.send(ChatMessage(text: "hello"))
+
+// Ping/pong
+try await connection.ping()
+
+// Close
+connection.close()
+```
+
+`send(_:encoder:)` encodes the value as JSON and sends it as a **UTF-8 text frame**, which is the WebSocket convention for JSON payloads.
+
+### Typed message stream
+
+`messages(of:)` is a convenience stream that filters out non-message events and decodes each payload directly:
+
+```swift
+for try await message in connection.messages(of: ChatMessage.self) {
+    print(message)
+}
+```
+
+### Synchronous state
+
+In addition to the async event stream, the current state is readable synchronously:
+
+```swift
+switch connection.state {
+case .idle:        break
+case .connecting:  break
+case .connected:   break
+case .reconnecting(let attempt, let delay): break
+case .disconnected: break
+}
+```
+
+### Manual reconnect
+
+```swift
+connection.reconnect()  // cancels current task, resets retry counter, reconnects immediately
+```
+
+Calling `close()` while an auto-reconnect delay is pending cancels the pending reconnect — it will not override an explicit `close()`.
+
+### Session isolation
+
+Each `WebSocketConnection` creates and owns its own `URLSession`. Closing or deallocating a connection does not affect the `APIClient`'s HTTP session or any requests in flight.
+
+## Subscription Protocol (Amplify-style)
+
+`SubscriptionRouter` adds a protocol layer on top of `WebSocketRouter` for APIs that require a JSON subscribe/unsubscribe handshake over WebSocket — the pattern used by AWS AppSync, Hasura, Binance, and similar real-time services.
+
+### Define a subscription
+
+```swift
+struct TradeSubscription: SubscriptionRouter {
+    struct Message: Encodable, Sendable {
+        let method: String
+        let params: [String]
+        let id: Int
+    }
+    typealias Event = TradeEvent
+
+    var baseURLString: String { "wss://stream.example.com" }
+    var path: String { "/ws" }
+
+    let symbol: String
+
+    var subscribeMessage: Message {
+        Message(method: "SUBSCRIBE", params: ["\(symbol)@trade"], id: 1)
+    }
+    var unsubscribeMessage: Message? {
+        Message(method: "UNSUBSCRIBE", params: ["\(symbol)@trade"], id: 1)
+    }
+
+    // Return nil to silently skip ack/keepalive frames
+    func decodeEvent(from message: WebSocketMessage, using decoder: JSONDecoder) throws -> TradeEvent? {
+        try? message.decoded(as: TradeEvent.self, decoder: decoder)
+    }
+}
+```
+
+The library handles the rest:
+1. Connects the WebSocket.
+2. Sends `subscribeMessage` when the handshake is confirmed (and after every auto-reconnect).
+3. Decodes each incoming message via `decodeEvent` and forwards non-nil results to the caller.
+4. Sends `unsubscribeMessage` when the subscription stops.
+
+### Inline — Async/Await
+
+```swift
+for try await trade in apiClient.subscribe(
+    TradeSubscription(symbol: "btcusdt"),
+    options: WebSocketOptions(reconnectPolicy: WebSocketReconnectPolicy(maximumAttempts: 3))
+) {
+    print(trade)
+}
+// Cancelling the enclosing Task sends unsubscribeMessage and closes the connection.
+```
+
+### Inline — Combine
+
+```swift
+apiClient.subscribe(TradeSubscription(symbol: "btcusdt"))
+    .receive(on: DispatchQueue.main)
+    .sink(
+        receiveCompletion: { print($0) },
+        receiveValue:      { trade in print(trade) }
+    )
+    .store(in: &cancellables)
+// Cancelling the AnyCancellable sends unsubscribeMessage and closes the connection.
+```
+
+### Explicit lifecycle — `SubscriptionConnection`
+
+Use `subscription(_:options:)` when you need direct control over connect/disconnect timing:
+
+```swift
+// Create and wire up BEFORE connecting
+let sub = try apiClient.subscription(TradeSubscription(symbol: "btcusdt"))
+
+// Async/Await
+Task {
+    for try await trade in sub.events() { print(trade) }
+}
+
+// — OR — Combine
+sub.publisher()
+    .receive(on: DispatchQueue.main)
+    .sink(receiveCompletion: { _ in }, receiveValue: { print($0) })
+    .store(in: &cancellables)
+
+// Connect AFTER the consumer is ready
+sub.connect()
+
+// Later:
+await sub.disconnect()   // sends unsubscribeMessage then closes
+sub.reconnect()          // resets counter, reconnects, re-sends subscribeMessage
+print(sub.state)         // WebSocketConnectionState
+```
+
+### Overriding `decodeEvent`
+
+| Return | Behaviour |
+|---|---|
+| `.some(event)` | Event is forwarded to the caller |
+| `nil` | Message is silently dropped (useful for acks, keepalives) |
+| `throw` | Error propagates to the stream / publisher |
+
+The default implementation (when you don't override) decodes every message strictly — if a frame cannot be decoded it throws. Override with `try?` to make decoding lenient:
+
+```swift
+func decodeEvent(from message: WebSocketMessage, using decoder: JSONDecoder) throws -> MyEvent? {
+    try? message.decoded(as: MyEvent.self, decoder: decoder)  // skip non-decodable frames
 }
 ```
 
@@ -657,5 +1181,4 @@ All operations are thread-safe:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 
