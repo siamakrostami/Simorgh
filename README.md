@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="Assets/logo.png" width="180" alt="Simorgh">
-</p>
-
 <h1 align="center">Simorgh</h1>
 
 <p align="center">
