@@ -188,44 +188,35 @@ import Network
 /// - **Error Handling**: Handle network changes in UI updates
 public final class NetworkMonitor: @unchecked Sendable {
     // MARK: - Public Properties
-    
-    /// A Combine publisher that emits changes to the network status.
-    ///
-    /// This publisher emits `Connectivity` values whenever the network status changes.
-    /// It can be used with Combine's reactive programming model to handle network
-    /// connectivity changes in a declarative way.
-    ///
-    /// ## Usage
-    /// ```swift
-    /// monitor.status
-    ///     .sink { connectivity in
-    ///         // Handle connectivity change
-    ///     }
-    ///     .store(in: &cancellables)
-    /// ```
+
     public var status: AnyPublisher<Connectivity, Never> {
         $_status.eraseToAnyPublisher()
     }
-    
+
     // MARK: - Private Properties
-    
-    /// Current computed network status (WiFi, cellular, VPN, etc.).
+
     @Published private var _status: Connectivity = .disconnected
-    
-    /// Network path monitor for system-level network monitoring
-    private let monitor: NWPathMonitor
-    /// Dedicated queue for network monitoring operations
+
+    /// General path monitor — fires on WiFi↔Cellular, connected↔disconnected.
+    private let pathMonitor: NWPathMonitor
+    /// Tunnel/VPN-specific monitor — fires when any `.other`-type interface (utun/tun/ppp) appears or disappears.
+    /// This catches VPN connect/disconnect even when the underlying WiFi path stays `.satisfied`.
+    private let vpnMonitor: NWPathMonitor?
     private let monitorQueue: DispatchQueue
-    /// Optional VPN checker for VPN detection
-    private let vpnChecker: VPNChecking?
-    /// Thread synchronization lock
     private let lock = NSLock()
-    
+
+    /// Latest path from the general monitor.
+    private var _latestPath: NWPath?
+    /// Whether the VPN-specific monitor's path is currently satisfied.
+    private var _vpnMonitorSatisfied: Bool = false
+
+    private let vpnInterfacePrefixes = ["utun", "tun", "tap", "ppp", "ipsec"]
+
     /// For AsyncStream usage, we store continuations in a thread-safe manner
     private var asyncContinuations: [UUID: AsyncStream<Connectivity>.Continuation] = [:]
-    
+
     // MARK: - Initialization
-    
+
     /// Initializes a new NetworkMonitor instance.
     /// - Parameters:
     ///   - shouldDetectVpnAutomatically: Whether to automatically detect VPN connections
@@ -234,64 +225,59 @@ public final class NetworkMonitor: @unchecked Sendable {
         shouldDetectVpnAutomatically: Bool = true,
         queue: DispatchQueue? = nil
     ) {
-        self.monitor = NWPathMonitor()
+        self.pathMonitor = NWPathMonitor()
+        self.vpnMonitor = shouldDetectVpnAutomatically
+            ? NWPathMonitor(requiredInterfaceType: .other)
+            : nil
         self.monitorQueue = queue ?? DispatchQueue(
             label: "com.srnetworkmanager.networkmonitor.queue",
             qos: .userInitiated
         )
-        self.vpnChecker = shouldDetectVpnAutomatically ? VPNChecker() : nil
     }
-    
-    /// Deinitializer that ensures proper cleanup of monitoring resources
+
     deinit {
         stopMonitoring()
     }
-    
+
     // MARK: - Public Methods
-    
-    /// Start monitoring network changes.
-    ///
-    /// This method begins monitoring network connectivity changes. The monitor
-    /// will start receiving updates about network status changes and will emit
-    /// these changes through the status publisher and AsyncStream.
-    ///
-    /// ## Usage
-    /// ```swift
-    /// let monitor = NetworkMonitor()
-    /// monitor.startMonitoring()
-    /// 
-    /// // Now the monitor will emit connectivity changes
-    /// monitor.status.sink { ... }.store(in: &cancellables)
-    /// ```
+
     public func startMonitoring() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            self.updateStatus(with: path)
+        // General connectivity monitor
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            lock.lock()
+            _latestPath = path
+            let vpnSatisfied = _vpnMonitorSatisfied
+            lock.unlock()
+            evaluate(path: path, vpnMonitorSatisfied: vpnSatisfied)
         }
-        monitor.start(queue: monitorQueue)
+        pathMonitor.start(queue: monitorQueue)
+
+        // VPN-specific monitor: fires when tunnel interfaces (utun/tun/ppp) appear or disappear.
+        // This triggers even when WiFi stays connected and only the VPN interface changes.
+        vpnMonitor?.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            let satisfied = path.status == .satisfied
+            lock.lock()
+            _vpnMonitorSatisfied = satisfied
+            let latestPath = _latestPath
+            lock.unlock()
+            if let latestPath {
+                evaluate(path: latestPath, vpnMonitorSatisfied: satisfied)
+            }
+        }
+        vpnMonitor?.start(queue: monitorQueue)
     }
-    
-    /// Stop monitoring network changes.
-    ///
-    /// This method stops the network monitoring and cleans up all resources.
-    /// It should be called when the monitor is no longer needed to prevent
-    /// unnecessary resource usage.
-    ///
-    /// ## Usage
-    /// ```swift
-    /// // Stop monitoring when no longer needed
-    /// monitor.stopMonitoring()
-    /// ```
+
     public func stopMonitoring() {
-        monitor.cancel()
-        
-        // Thread-safely finish all continuations
+        pathMonitor.cancel()
+        vpnMonitor?.cancel()
+
         lock.lock()
         let continuations = asyncContinuations
         asyncContinuations.removeAll()
         lock.unlock()
-        
-        // Finish each continuation outside the lock
+
         continuations.values.forEach { $0.finish() }
     }
     
@@ -337,34 +323,33 @@ public final class NetworkMonitor: @unchecked Sendable {
     }
     
     // MARK: - Private Methods
-    
-    /// Updates the network status based on the provided NWPath.
-    /// - Parameter path: The network path information from NWPathMonitor
-    private func updateStatus(with path: NWPath) {
-        var newStatus: Connectivity
-        
-        // If there's no connection or requires a connection (inactive)
+
+    /// Combines general-path state with VPN-monitor state to produce Connectivity.
+    ///
+    /// Called from both monitors so any change — WiFi↔Cellular OR VPN on/off — triggers a fresh emit.
+    private func evaluate(path: NWPath, vpnMonitorSatisfied: Bool) {
         guard path.status == .satisfied else {
-            newStatus = .disconnected
-            setStatus(newStatus)
+            setStatus(.disconnected)
             return
         }
-        
-        // Check for known VPN interfaces first
-        if let vpnChecker = vpnChecker, vpnChecker.isVPNActive() {
-            newStatus = .connected(.vpn)
-        } else if path.usesInterfaceType(.wifi) {
-            newStatus = .connected(.wifi)
-        } else if path.usesInterfaceType(.cellular) {
-            newStatus = .connected(.cellular)
-        } else if path.usesInterfaceType(.wiredEthernet) {
-            newStatus = .connected(.ethernet)
-        } else {
-            // Could be loopback, other, etc.
-            newStatus = .connected(.other)
+
+        // VPN is active if the dedicated tunnel monitor is satisfied, OR if the
+        // general path already lists a known tunnel interface (belt-and-suspenders).
+        let hasVPNInterface = vpnMonitorSatisfied || path.availableInterfaces.contains { iface in
+            vpnInterfacePrefixes.contains { iface.name.lowercased().starts(with: $0) }
         }
-        
-        setStatus(newStatus)
+
+        if hasVPNInterface {
+            setStatus(.connected(.vpn))
+        } else if path.usesInterfaceType(.wifi) {
+            setStatus(.connected(.wifi))
+        } else if path.usesInterfaceType(.cellular) {
+            setStatus(.connected(.cellular))
+        } else if path.usesInterfaceType(.wiredEthernet) {
+            setStatus(.connected(.ethernet))
+        } else {
+            setStatus(.connected(.other))
+        }
     }
     
     /// Thread-safely set status (updates @Published, sends to async continuations)

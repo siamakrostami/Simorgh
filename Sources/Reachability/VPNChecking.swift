@@ -8,6 +8,9 @@
 #if canImport(CFNetwork) && !os(watchOS)
 import CFNetwork
 #endif
+#if !os(watchOS)
+import Darwin
+#endif
 import Foundation
 
 // MARK: - VPNChecking
@@ -285,41 +288,49 @@ public final class VPNChecker: VPNChecking {
     // MARK: - Private Methods
 
 #if !os(watchOS)
-    /// Performs the actual VPN connection check by analyzing system proxy settings.
-    /// - Returns: `true` if VPN interfaces are detected, `false` otherwise
+    /// Primary VPN check: enumerates active network interfaces via getifaddrs().
+    ///
+    /// This is the most reliable approach on iOS/macOS — it detects utun, tun, tap,
+    /// ppp, and ipsec interfaces regardless of VPN protocol (IKEv2, WireGuard,
+    /// OpenVPN, IPsec, etc.). The CFNetwork proxy approach misses many modern VPN
+    /// implementations.
     private func checkVPNConnection() -> Bool {
-        guard let proxySettings = fetchSystemProxySettings() else {
-            return false
-        }
-        return hasVPNInterface(in: proxySettings)
+        checkViaNetworkInterfaces() || checkViaProxySettings()
     }
 
-    /// Fetches system proxy settings safely using CFNetwork.
-    /// - Returns: Dictionary of proxy settings or `nil` if unavailable
-    private func fetchSystemProxySettings() -> [String: Any]? {
+    /// Enumerate system network interfaces and look for known VPN interface name prefixes.
+    private func checkViaNetworkInterfaces() -> Bool {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return false }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr = ifaddr
+        while let current = ptr {
+            let name = String(cString: current.pointee.ifa_name).lowercased()
+            if vpnInterfaces.contains(where: { name.starts(with: $0) }) {
+                return true
+            }
+            ptr = current.pointee.ifa_next
+        }
+        return false
+    }
+
+    /// Fallback: CFNetwork proxy settings check.
+    /// Catches some VPN configurations that don't add utun interfaces
+    /// (e.g. certain HTTP/SOCKS proxy-based VPNs).
+    private func checkViaProxySettings() -> Bool {
 #if canImport(CFNetwork)
         guard let cfDict = CFNetworkCopySystemProxySettings(),
-              let proxySettings = (cfDict.takeRetainedValue() as NSDictionary)
-                as? [String: Any],
+              let proxySettings = (cfDict.takeRetainedValue() as NSDictionary) as? [String: Any],
               let scoped = proxySettings["__SCOPED__"] as? [String: Any]
-        else {
-            return nil
-        }
-        return scoped
-#else
-        return nil
-#endif
-    }
+        else { return false }
 
-    /// Checks if any VPN interfaces are present in the proxy settings.
-    /// - Parameter settings: Dictionary of proxy settings to analyze
-    /// - Returns: `true` if VPN interfaces are found, `false` otherwise
-    private func hasVPNInterface(in settings: [String: Any]) -> Bool {
-        settings.keys.contains { interfaceName in
-            vpnInterfaces.contains { prefix in
-                interfaceName.lowercased().starts(with: prefix)
-            }
+        return scoped.keys.contains { key in
+            vpnInterfaces.contains { key.lowercased().starts(with: $0) }
         }
+#else
+        return false
+#endif
     }
 #endif
 }
