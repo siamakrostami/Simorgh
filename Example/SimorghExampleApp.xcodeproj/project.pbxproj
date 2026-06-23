@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		01BC1EF02D95D06000DF8431 /* Simorgh in Frameworks */ = {isa = PBXBuildFile; productRef = 01BC1EEF2D95D06000DF8431 /* Simorgh */; };
-		D50FF5E02D10478B008AF330 /* Simorgh in Frameworks */ = {isa = PBXBuildFile; productRef = D50FF5DF2D10478B008AF330 /* Simorgh */; };
+		0132593A2FEB232100236572 /* Simorgh in Frameworks */ = {isa = PBXBuildFile; productRef = 013259392FEB232100236572 /* Simorgh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,18 +27,25 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				01BC1EF02D95D06000DF8431 /* Simorgh in Frameworks */,
-				D50FF5E02D10478B008AF330 /* Simorgh in Frameworks */,
+				0132593A2FEB232100236572 /* Simorgh in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		013259382FEB232100236572 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		017912FE2C9E03770011B237 = {
 			isa = PBXGroup;
 			children = (
 				017913092C9E03770011B237 /* SimorghExampleApp */,
+				013259382FEB232100236572 /* Frameworks */,
 				017913082C9E03770011B237 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -72,8 +78,7 @@
 			);
 			name = SimorghExampleApp;
 			packageProductDependencies = (
-				D50FF5DF2D10478B008AF330 /* Simorgh */,
-				01BC1EEF2D95D06000DF8431 /* Simorgh */,
+				013259392FEB232100236572 /* Simorgh */,
 			);
 			productName = SimorghExampleApp;
 			productReference = 017913072C9E03770011B237 /* SimorghExampleApp.app */;
@@ -87,7 +92,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1600;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					017913062C9E03770011B237 = {
 						CreatedOnToolsVersion = 16.0;
@@ -104,7 +109,7 @@
 			mainGroup = 017912FE2C9E03770011B237;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../Simorgh" */,
+				013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 017913082C9E03770011B237 /* Products */;
@@ -195,6 +200,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -251,6 +257,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -338,19 +345,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		01BC1EEE2D95D06000DF8431 /* XCLocalSwiftPackageReference "../../Simorgh" */ = {
+		013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../Simorgh;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		01BC1EEF2D95D06000DF8431 /* Simorgh */ = {
+		013259392FEB232100236572 /* Simorgh */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Simorgh;
-		};
-		D50FF5DF2D10478B008AF330 /* Simorgh */ = {
-			isa = XCSwiftPackageProductDependency;
+			package = 013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */;
 			productName = Simorgh;
 		};
 /* End XCSwiftPackageProductDependency section */
