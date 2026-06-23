@@ -53,6 +53,20 @@ final class DownloadViewModel: ObservableObject {
             guard fileSizeBytes > 0 else { return "" }
             return ByteCountFormatter.string(fromByteCount: fileSizeBytes, countStyle: .file)
         }
+
+        var speedString: String {
+            let bps = speedKBps * 1024
+            switch bps {
+            case ..<1024:
+                return String(format: "%.0f B/s", bps)
+            case ..<(1024 * 1024):
+                return String(format: "%.1f KB/s", bps / 1024)
+            case ..<(1024 * 1024 * 1024):
+                return String(format: "%.2f MB/s", bps / (1024 * 1024))
+            default:
+                return String(format: "%.2f GB/s", bps / (1024 * 1024 * 1024))
+            }
+        }
     }
 
     // MARK: - Published

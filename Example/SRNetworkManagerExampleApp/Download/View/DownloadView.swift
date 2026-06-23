@@ -193,7 +193,7 @@ private struct DownloadRowView: View {
 
             if row.state == .downloading {
                 HStack {
-                    Text(String(format: "%.1f KB/s", row.speedKBps))
+                    Text(row.speedString)
                         .font(.caption).foregroundStyle(.secondary)
                     if let eta = row.etaSeconds {
                         Text("·").foregroundStyle(.secondary)
