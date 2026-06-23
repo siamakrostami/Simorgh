@@ -1,5 +1,5 @@
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 // httpbin.org/stream/:n returns n newline-delimited JSON objects — perfect for SSE demo.
 struct StreamRouter: NetworkRouter {

@@ -1,5 +1,5 @@
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 struct BinanceTradeSocket: WebSocketRouter {
     var baseURLString: String { "wss://stream.binance.com:9443" }

@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 /// Demonstrates all three subscription APIs side-by-side:
 /// 1. `apiClient.subscribe()` → AsyncThrowingStream  (async/await, fire-and-forget)

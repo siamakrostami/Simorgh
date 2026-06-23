@@ -1,4 +1,4 @@
-# SRNetworkManager
+# Simorgh
 
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
@@ -51,7 +51,7 @@ Or in Xcode: **File → Add Package Dependencies** → paste the URL above.
 ### Define an endpoint
 
 ```swift
-import SRNetworkManager
+import Simorgh
 
 struct GetUsersEndpoint: NetworkRouter {
     var baseURLString: String { "https://api.example.com" }

@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 struct UploadAPI: Sendable, NetworkRouter {
     var baseURLString: String { "https://file.io/" }

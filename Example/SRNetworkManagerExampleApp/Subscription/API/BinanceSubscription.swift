@@ -1,5 +1,5 @@
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 /// A SubscriptionRouter for Binance live trade data.
 ///

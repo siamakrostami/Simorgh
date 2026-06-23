@@ -1,4 +1,4 @@
-import SRNetworkManager
+import Simorgh
 import SwiftUI
 
 struct DownloadView: View {

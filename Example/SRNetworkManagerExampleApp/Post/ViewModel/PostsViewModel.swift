@@ -10,7 +10,7 @@
 
 import Foundation
 import Combine
-import SRNetworkManager
+import Simorgh
 
 @MainActor
 final class PostsViewModel: ObservableObject, Sendable {

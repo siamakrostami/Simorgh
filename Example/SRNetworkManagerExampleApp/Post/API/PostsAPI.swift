@@ -8,7 +8,7 @@
 // MARK: - PostsAPI.swift
 
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 struct PostsAPI: NetworkRouter, Sendable {
     var baseURLString: String { "https://jsonplaceholder.typicode.com/" }

@@ -7,7 +7,7 @@
 
 import Combine
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 @MainActor
 final class UploadViewModel: ObservableObject, Sendable {

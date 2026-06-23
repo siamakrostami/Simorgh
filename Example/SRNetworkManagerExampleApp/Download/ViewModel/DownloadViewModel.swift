@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 // MARK: - Demo catalog
 

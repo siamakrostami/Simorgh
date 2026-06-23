@@ -1,5 +1,5 @@
 import Foundation
-import SRNetworkManager
+import Simorgh
 
 @MainActor
 final class RealtimeSubscriptionViewModel: ObservableObject {
