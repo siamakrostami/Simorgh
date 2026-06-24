@@ -1,5 +1,16 @@
 import Foundation
 
+// MARK: - SubscriptionTransport
+
+/// Minimal send/receive surface exposed to a router during negotiation.
+/// Scoped to the handshake window only — not retained after `negotiate()` returns.
+public protocol SubscriptionTransport: Sendable {
+    /// Sends a message to the server.
+    func send(_ message: WebSocketMessage) async throws
+    /// Returns the next message from the server, skipping keepalives and connection events.
+    func receive() async throws -> WebSocketMessage
+}
+
 // MARK: - SubscriptionRouter
 
 /// Describes a WebSocket subscription endpoint: the transport (URL, headers, query params via
@@ -50,6 +61,11 @@ public protocol SubscriptionRouter: WebSocketRouter {
     /// reconnect) to register the subscription with the server.
     var subscribeMessage: SubscribeMessage { get }
 
+    /// Runs a protocol-specific negotiation before `subscribeMessage` is sent, on every
+    /// (re)connect. Use this for multi-step handshakes (e.g. `connection_init` / `connection_ack`).
+    /// Default is a no-op — existing conformers require no changes.
+    func negotiate(over transport: any SubscriptionTransport) async throws
+
     /// Sent when the subscription is stopped. Return `nil` when the server does not require
     /// an unsubscribe frame (e.g. closing the connection is sufficient).
     var unsubscribeMessage: SubscribeMessage? { get }
@@ -64,6 +80,8 @@ public protocol SubscriptionRouter: WebSocketRouter {
 // MARK: - Default implementations
 
 extension SubscriptionRouter {
+    public func negotiate(over transport: any SubscriptionTransport) async throws {}
+
     public var unsubscribeMessage: SubscribeMessage? { nil }
 
     /// Attempts to decode every incoming message as `Event`.

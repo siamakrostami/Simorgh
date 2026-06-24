@@ -12,6 +12,39 @@ private final class _SubjectRetainer<Event: Sendable, Owner: AnyObject>: @unchec
     init(_ owner: Owner) { self.owner = owner }
 }
 
+// MARK: - HandshakeTransport
+
+/// Wraps a `WebSocketConnection` and exposes only the send/receive surface needed
+/// during a negotiation phase. Subscribes to the connection's event stream at init
+/// time so no messages are missed between creation and the first `receive()` call.
+private final class HandshakeTransport: SubscriptionTransport, @unchecked Sendable {
+    private let ws: WebSocketConnection
+    private var iterator: WebSocketConnection.EventStream.AsyncIterator
+
+    init(ws: WebSocketConnection) {
+        self.ws = ws
+        self.iterator = ws.events().makeAsyncIterator()
+    }
+
+    func send(_ message: WebSocketMessage) async throws {
+        try await ws.send(message)
+    }
+
+    func receive() async throws -> WebSocketMessage {
+        while let event = try await iterator.next() {
+            switch event {
+            case .message(let msg):
+                return msg
+            case .disconnected:
+                throw NetworkError.unknown
+            case .connected, .reconnecting, .pong:
+                continue
+            }
+        }
+        throw NetworkError.unknown
+    }
+}
+
 // MARK: - SubscriptionConnection
 
 /// Manages the lifecycle of a single subscription over a `WebSocketConnection`.
@@ -167,6 +200,8 @@ public final class SubscriptionConnection<R: SubscriptionRouter>: @unchecked Sen
                     for try await event in ws.events() {
                         switch event {
                         case .connected:
+                            let transport = HandshakeTransport(ws: ws)
+                            try await router.negotiate(over: transport)
                             if let data = try? JSONEncoder().encode(router.subscribeMessage),
                                let str = String(data: data, encoding: .utf8) {
                                 URLSessionLogger.shared.logSubscriptionEvent(label: "SUBSCRIBE", url: ws.url, content: str, logLevel: logLevel)
