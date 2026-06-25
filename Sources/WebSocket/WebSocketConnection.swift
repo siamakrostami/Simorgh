@@ -228,7 +228,13 @@ public final class WebSocketConnection: @unchecked Sendable {
     public func ping() async throws {
         guard let task = currentTask() else { throw NetworkError.unknown }
         let _: Void = try await withCheckedThrowingContinuation { continuation in
+            // URLSessionWebSocketTask.sendPing can invoke its handler more than once
+            // on connection abort (POSIX 53). The nonisolated(unsafe) var is safe here
+            // because the flag is only read/written inside the serial sendPing callback.
+            nonisolated(unsafe) var resumed = false
             task.sendPing { [weak self] error in
+                guard !resumed else { return }
+                resumed = true
                 if let error {
                     continuation.resume(throwing: self?.mapError(error) ?? NetworkError.responseError(error))
                 } else {
