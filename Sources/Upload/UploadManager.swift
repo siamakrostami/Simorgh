@@ -23,8 +23,8 @@ import Foundation
 ///     backgroundSessionIdentifier: "com.example.upload",
 ///     storageDirectory: uploadsDirectory,
 ///     logLevel: .standard))
-/// manager.setFinishHandler { result in ... }
-/// manager.markFinishHandlerReady()                  // replays results delivered before this point
+/// manager.setFinishHandler { result in ... }       // set before the background session is re-attached
+/// manager.replayUnacknowledgedResults()            // results delivered while no handler was set
 /// try await manager.startBackground(request)       // returns once the transfer has started
 /// // AppDelegate:
 /// // application(_:handleEventsForBackgroundURLSession:completionHandler:)
@@ -41,9 +41,6 @@ public final class UploadManager: NSObject, @unchecked Sendable {
     private let lock = NSLock()
 
     private var finishHandler: (@Sendable (UploadResult) -> Void)?
-    /// Results can arrive at cold launch before the app registered a handler; they are stored until
-    /// `acknowledge(id:)` and replayed by `markFinishHandlerReady()`.
-    private var finishHandlerReady = false
     private var backgroundCompletionHandler: (() -> Void)?
     private var progressHandlers: [String: ProgressHandler] = [:]
     private var foregroundContinuations: [Int: CheckedContinuation<UploadResult, Error>] = [:]
@@ -93,14 +90,15 @@ public final class UploadManager: NSObject, @unchecked Sendable {
 
     // MARK: Finish handler
 
-    /// Called once per finished background upload (not for replaced jobs).
+    /// Called once per finished background upload (not for replaced jobs). Every result is stored until
+    /// `acknowledge(id:)`, also when no handler is set (a result delivered at cold launch, before the
+    /// app is ready, is never lost).
     public func setFinishHandler(_ handler: (@Sendable (UploadResult) -> Void)?) {
         withLock { finishHandler = handler }
     }
 
-    /// Call once the handler can take results. Replays results that arrived before it existed.
-    public func markFinishHandlerReady() {
-        withLock { finishHandlerReady = true }
+    /// Delivers every stored, unacknowledged result to the finish handler again.
+    public func replayUnacknowledgedResults() {
         let handler = withLock { finishHandler }
         for stored in resultStore.loadAll() {
             handler?(stored.result)
@@ -481,8 +479,7 @@ extension UploadManager: URLSessionTaskDelegate, URLSessionDataDelegate {
 
         removeJobAndBody(id: id)
         resultStore.save(PersistedUploadResult(result))
-        let (ready, handler) = withLock { (finishHandlerReady, finishHandler) }
-        guard ready else { return }
+        let handler = withLock { finishHandler }
         handler?(result)
     }
 

@@ -416,11 +416,11 @@ let manager = UploadManager(config: UploadManagerConfig(
     logLevel: .standard
 ))
 
-manager.setFinishHandler { result in
+manager.setFinishHandler { result in            // set before the background session is re-attached
     // result.isSuccess, result.statusCode, result.responseBody, result.failure, result.metadata
     manager.acknowledge(id: result.id)
 }
-manager.markFinishHandlerReady()                  // replays results delivered before this point
+manager.replayUnacknowledgedResults()            // results delivered while no handler was set
 
 var url = URLRequest(url: uploadURL)
 url.httpMethod = "POST"
