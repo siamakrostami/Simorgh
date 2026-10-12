@@ -56,6 +56,7 @@ A production-grade Swift networking library. One package covers HTTP, WebSocket,
   - [Controls](#controls)
   - [Error handling](#error-handling)
   - [Background session wiring](#background-session-wiring)
+- [Upload Manager](#upload-manager)
 
 ### Real-time
 - [WebSocket](#websocket)
@@ -315,6 +316,9 @@ struct V2UsersEndpoint: NetworkRouter {
 | POST, PUT, PATCH | optional | ✅ | JSON body (default) |
 | POST, PUT, PATCH + `formData` header | optional | ✅ | `application/x-www-form-urlencoded` |
 
+Query values are encoded as strings: `Bool` as `true` / `false`, numbers as numbers. Integers `0` and `1` are
+numbers (`page=1`), not booleans.
+
 Build a request manually when needed:
 
 ```swift
@@ -389,6 +393,65 @@ client.uploadRequest(endpoint, formFields: fields) { print($0) }
 `MultipartFormField` cases:
 - `.text(name:value:)` — plain text field
 - `.file(name:data:fileName:mimeType:)` — file field; `mimeType` auto-detected when `nil`
+
+---
+
+## Upload Manager
+
+`UploadManager` sends large multipart uploads **from a file** and can keep them running in a **background
+`URLSession`**. Use it instead of `APIClient.uploadRequest` when the upload is big or must survive the app
+being suspended.
+
+| | `APIClient.uploadRequest` | `UploadManager` |
+|---|---|---|
+| Body | in-memory `Data` | multipart body streamed to disk, sent with `uploadTask(fromFile:)` |
+| Session | per call, default | background session (survives suspension and relaunch) and foreground session |
+| Concurrency | any | one upload at a time, a second waits |
+| Result after relaunch | no | persisted jobs and unacknowledged results |
+
+```swift
+let manager = UploadManager(config: UploadManagerConfig(
+    backgroundSessionIdentifier: "com.example.upload",
+    storageDirectory: uploadsDirectory,          // multipart bodies and the default job/result stores
+    logLevel: .standard
+))
+
+manager.setFinishHandler { result in
+    // result.isSuccess, result.statusCode, result.responseBody, result.failure, result.metadata
+    manager.acknowledge(id: result.id)
+}
+manager.markFinishHandlerReady()                  // replays results delivered before this point
+
+var url = URLRequest(url: uploadURL)
+url.httpMethod = "POST"
+url.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+let request = UploadRequest(
+    urlRequest: url,
+    textParts: [UploadTextPart(name: "checksum", value: md5)],
+    fileParts: [UploadFilePart(name: "file", fileURL: zipURL, fileName: "day.zip", mimeType: "application/zip")],
+    metadata: ["date": "2026-10-12"]
+)
+
+try await manager.startBackground(request)       // returns once the transfer runs
+// or wait for the answer in the foreground:
+let result = try await manager.uploadForeground(request) { progress, sent, expected in }
+```
+
+AppDelegate wiring for background uploads:
+
+```swift
+func application(_ app: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                 completionHandler: @escaping () -> Void) {
+    manager.handleEventsForBackgroundURLSession(identifier: identifier, completionHandler: completionHandler)
+}
+```
+
+Other controls: `cancelJobs(matching:)` (replace a job, its result is not reported), `cancelAll()`,
+`activeJobIds()`, `bytesSent(id:)`, `setProgressHandler(id:handler:)`, `pendingJobs()`, `abandon(id:)`.
+Provide your own `UploadJobStore` / `UploadResultStore` to keep jobs and results somewhere else than the
+default JSON files. A result counts as a success only when the whole body was sent, the status is 2xx and the
+response body is not empty (`UploadCompletion.evaluate`).
 
 ---
 

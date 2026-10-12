@@ -395,13 +395,25 @@ public struct URLQueryEncoder {
             for value in array {
                 components += queryComponents(fromKey: "\(key)[]", value: value)
             }
-        } else if let bool = value as? Bool {
+        } else if let bool = booleanValue(of: value) {
             components.append((escape(key), escape(bool ? "true" : "false")))
         } else {
             components.append((escape(key), escape("\(value)")))
         }
 
         return components
+    }
+
+    /// Returns the value as a Bool only when it really is a boolean.
+    ///
+    /// `value as? Bool` also succeeds for the `NSNumber`s `0` and `1` (JSON serialization turns an
+    /// `Int` `1` into `NSNumber(1)`), which made `page=1` encode as `page=true`. A real boolean is an
+    /// `NSNumber` backed by `CFBoolean`; numbers are not.
+    private func booleanValue(of value: Any) -> Bool? {
+        if let number = value as? NSNumber {
+            return CFGetTypeID(number) == CFBooleanGetTypeID() ? number.boolValue : nil
+        }
+        return value as? Bool
     }
 
     /// Escapes a string for URL safety.

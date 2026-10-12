@@ -32,7 +32,8 @@ let package = Package(
                 "Data",
                 "Reachability",
                 "WebSocket",
-                "DownloadManager"
+                "DownloadManager",
+                "Upload"
             ],
             swiftSettings: [
                 .define("SPM_SWIFT_6"),
