@@ -28,18 +28,37 @@ public struct UploadFilePart: Sendable, Equatable {
     }
 }
 
-/// A file-based multipart upload.
+/// A raw (non-multipart) request body read from a file, starting at `offset`.
 ///
-/// The body is written to disk first (`MultipartFileBodyWriter`) and sent with
+/// Used for protocols that send the file bytes as the whole body, such as a tus `PATCH`
+/// (`Content-Type: application/offset+octet-stream`). A non-zero `offset` sends only the tail of the file,
+/// which resumes a partially uploaded file.
+public struct UploadRawBody: Sendable, Equatable {
+    public let fileURL: URL
+    public let offset: Int64
+    public let contentType: String
+
+    public init(fileURL: URL, offset: Int64 = 0, contentType: String = "application/octet-stream") {
+        self.fileURL = fileURL
+        self.offset = max(0, offset)
+        self.contentType = contentType
+    }
+}
+
+/// A file-based upload: a multipart body built from parts, or a raw file body.
+///
+/// The body is written to disk first (`MultipartFileBodyWriter` / `RawFileBodyWriter`) and sent with
 /// `uploadTask(with:fromFile:)`. That is the only upload form a background `URLSession` accepts, and
 /// it keeps large files out of memory.
 public struct UploadRequest: Sendable {
     /// Stable job id. Also used as the task description, so it survives an app relaunch.
     public let id: String
-    /// URL, method and headers. The body is built from the parts below.
+    /// URL, method and headers. The body is built from the parts below, or from `rawBody`.
     public var urlRequest: URLRequest
     public var textParts: [UploadTextPart]
     public var fileParts: [UploadFilePart]
+    /// When set, the body is these file bytes and `textParts` / `fileParts` are ignored.
+    public var rawBody: UploadRawBody?
     /// Free-form values stored with the job (device id, date, checksum, ...) and returned with the result.
     public var metadata: [String: String]
 
@@ -48,12 +67,14 @@ public struct UploadRequest: Sendable {
         urlRequest: URLRequest,
         textParts: [UploadTextPart] = [],
         fileParts: [UploadFilePart] = [],
+        rawBody: UploadRawBody? = nil,
         metadata: [String: String] = [:]
     ) {
         self.id = id
         self.urlRequest = urlRequest
         self.textParts = textParts
         self.fileParts = fileParts
+        self.rawBody = rawBody
         self.metadata = metadata
     }
 }

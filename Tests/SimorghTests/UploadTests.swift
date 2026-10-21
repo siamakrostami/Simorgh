@@ -242,6 +242,57 @@ final class UploadTests: XCTestCase {
         XCTAssertTrue(results.allSatisfy(\.isSuccess))
     }
 
+    // MARK: Raw body
+
+    func testCompletionAccepts204WithoutBody() {
+        XCTAssertEqual(
+            UploadCompletion.evaluate(transportError: false, httpStatusCode: 204, responseBody: nil, bytesSent: 10, bytesExpected: 10),
+            .success(responseBody: Data())
+        )
+    }
+
+    func testRawWriterCopiesWholeFileAtOffsetZero() throws {
+        let file = try makeFile("raw.bin", contents: "0123456789")
+        let destination = directory.appendingPathComponent("raw.body")
+        try RawFileBodyWriter.write(UploadRawBody(fileURL: file), to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "0123456789")
+    }
+
+    func testRawWriterWritesTailFromOffset() throws {
+        let file = try makeFile("raw.bin", contents: "0123456789")
+        let destination = directory.appendingPathComponent("raw.body")
+        try Data("stale".utf8).write(to: destination)
+        try RawFileBodyWriter.write(UploadRawBody(fileURL: file, offset: 6), to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "6789")
+    }
+
+    func testRawWriterRejectsOffsetPastEnd() throws {
+        let file = try makeFile("raw.bin", contents: "0123")
+        let destination = directory.appendingPathComponent("raw.body")
+        XCTAssertThrowsError(try RawFileBodyWriter.write(UploadRawBody(fileURL: file, offset: 9), to: destination))
+    }
+
+    func testForegroundRawUploadSendsFileTailWithContentType() async throws {
+        StubUploadProtocol.reset(status: 204, body: Data())
+        let file = try makeFile("day.zip", contents: "ZIP-BYTES")
+        var url = URLRequest(url: URL(string: "https://upload.test/tus/files/abc")!)
+        url.httpMethod = "PATCH"
+        let request = UploadRequest(
+            id: "raw",
+            urlRequest: url,
+            rawBody: UploadRawBody(fileURL: file, offset: 4, contentType: "application/offset+octet-stream")
+        )
+
+        let result = try await makeManager().uploadForeground(request)
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(result.statusCode, 204)
+        let captured = try XCTUnwrap(StubUploadProtocol.captured.first)
+        XCTAssertEqual(captured.method, "PATCH")
+        XCTAssertEqual(captured.contentType, "application/offset+octet-stream")
+        XCTAssertEqual(String(decoding: captured.body, as: UTF8.self), "BYTES")
+    }
+
     func testStartBackgroundWithoutBackgroundSessionThrows() async throws {
         let file = try makeFile("day.zip", contents: "Z")
         do {

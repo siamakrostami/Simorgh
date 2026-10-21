@@ -9,7 +9,8 @@ public enum UploadCompletion {
 
     /// - A transport error fails first.
     /// - The whole request body must have been sent.
-    /// - The status must be 2xx and the response body non-empty.
+    /// - The status must be 2xx and the response body non-empty, except `204 No Content`
+    ///   (for example a tus `PATCH`), which succeeds with an empty body.
     public static func evaluate(
         transportError: Bool,
         transportDescription: String = "",
@@ -25,6 +26,9 @@ public enum UploadCompletion {
         guard let httpStatusCode else { return .failure(.missingResponse) }
         guard (200..<300).contains(httpStatusCode) else {
             return .failure(.httpStatus(httpStatusCode))
+        }
+        if httpStatusCode == 204 {
+            return .success(responseBody: responseBody ?? Data())
         }
         guard let responseBody, !responseBody.isEmpty else {
             return .failure(.missingResponse)

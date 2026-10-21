@@ -316,6 +316,12 @@ public final class UploadManager: NSObject, @unchecked Sendable {
     // MARK: Internals
 
     private func buildRequest(_ request: UploadRequest, bodyURL: URL) throws -> URLRequest {
+        if let rawBody = request.rawBody {
+            try RawFileBodyWriter.write(rawBody, to: bodyURL)
+            var urlRequest = request.urlRequest
+            urlRequest.setValue(rawBody.contentType, forHTTPHeaderField: "Content-Type")
+            return urlRequest
+        }
         let boundary: String
         do {
             boundary = try MultipartFileBodyWriter.write(
