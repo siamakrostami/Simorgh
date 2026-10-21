@@ -41,6 +41,7 @@ public final class UploadManager: NSObject, @unchecked Sendable {
     private let lock = NSLock()
 
     private var finishHandler: (@Sendable (UploadResult) -> Void)?
+    private var waitingForConnectivityHandler: (@Sendable (String?) -> Void)?
     private var backgroundCompletionHandler: (() -> Void)?
     private var progressHandlers: [String: ProgressHandler] = [:]
     private var foregroundContinuations: [Int: CheckedContinuation<UploadResult, Error>] = [:]
@@ -95,6 +96,12 @@ public final class UploadManager: NSObject, @unchecked Sendable {
     /// app is ready, is never lost).
     public func setFinishHandler(_ handler: (@Sendable (UploadResult) -> Void)?) {
         withLock { finishHandler = handler }
+    }
+
+    /// Called with the job id when a foreground upload waits for a network connection
+    /// (`waitsForConnectivity`). URLSession never reports this for background sessions.
+    public func setWaitingForConnectivityHandler(_ handler: (@Sendable (String?) -> Void)?) {
+        withLock { waitingForConnectivityHandler = handler }
     }
 
     /// Delivers every stored, unacknowledged result to the finish handler again.
@@ -414,6 +421,17 @@ extension UploadManager: URLSessionTaskDelegate, URLSessionDataDelegate {
             return foregroundProgressHandlers[task.taskIdentifier]
         }
         handler?(progress, totalBytesSent, totalBytesExpectedToSend)
+    }
+
+    public func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        URLSessionLogger.shared.logUploadEvent(
+            "WAITING FOR CONNECTIVITY",
+            url: task.originalRequest?.url,
+            detail: task.taskDescription.map { "id=\($0)" },
+            logLevel: config.logLevel
+        )
+        let handler = withLock { waitingForConnectivityHandler }
+        handler?(task.taskDescription)
     }
 
     public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {

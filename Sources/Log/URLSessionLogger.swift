@@ -188,6 +188,40 @@ public final class URLSessionLogger: Sendable {
     
     /// Shared singleton instance for global logging
     public static let shared = URLSessionLogger()
+
+    /// Header names whose values are never printed (credentials, session cookies). Compared case-insensitively.
+    public static let redactedHeaderNames: Set<String> = [
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-refresh-token",
+    ]
+
+    /// The value to print for a header. Credentials are replaced; for `Authorization` the scheme
+    /// (`Bearer`, `Basic`, …) is kept so the log still shows which auth was sent.
+    public static func redactedHeaderValue(name: String, value: String) -> String {
+        guard redactedHeaderNames.contains(name.lowercased()) else { return value }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if let space = trimmed.firstIndex(of: " ") {
+            return "\(trimmed[..<space]) <redacted>"
+        }
+        return "<redacted>"
+    }
+
+    /// Logs an upload lifecycle event (for example a task waiting for connectivity).
+    public func logUploadEvent(_ event: String, url: URL?, detail: String? = nil, logLevel: LogLevel?) {
+        guard let logLevel, logLevel != .none else { return }
+        logQueue.async {
+            print("\n⬆️⬆️⬆️ UPLOAD \(event) ⬆️⬆️⬆️")
+            print("🔈 \(url?.absoluteString ?? "Unknown")")
+            if logLevel != .minimal, let detail { print("💡 \(detail)") }
+            print("🔼🔼🔼 END 🔼🔼🔼")
+        }
+    }
     
     /// Serial queue for synchronized logging operations
     private let logQueue = DispatchQueue(label: "com.urlsessionlogger.queue")
@@ -239,7 +273,7 @@ public final class URLSessionLogger: Sendable {
 
             if logLevel != .minimal {
                 print("Headers:")
-                request.allHTTPHeaderFields?.forEach { print("💡 \($0.key): \($0.value)") }
+                request.allHTTPHeaderFields?.forEach { print("💡 \($0.key): \(Self.redactedHeaderValue(name: $0.key, value: $0.value))") }
             }
 
             if logLevel == .verbose, let body = request.httpBody, let bodyString = String(data: body, encoding: .utf8) {
@@ -365,7 +399,10 @@ public final class URLSessionLogger: Sendable {
                 
                 if logLevel != .minimal {
                     print("Headers:")
-                    httpResponse.allHeaderFields.forEach { print("💡 \($0.key): \($0.value)") }
+                    httpResponse.allHeaderFields.forEach {
+                        let name = "\($0.key)"
+                        print("💡 \(name): \(Self.redactedHeaderValue(name: name, value: "\($0.value)"))")
+                    }
                 }
 
                 if logLevel == .verbose, let data = data, let responseBody = String(data: data, encoding: .utf8) {
