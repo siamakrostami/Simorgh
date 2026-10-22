@@ -32,15 +32,24 @@ public struct UploadFilePart: Sendable, Equatable {
 ///
 /// Used for protocols that send the file bytes as the whole body, such as a tus `PATCH`
 /// (`Content-Type: application/offset+octet-stream`). A non-zero `offset` sends only the tail of the file,
-/// which resumes a partially uploaded file.
+/// which resumes a partially uploaded file. A `length` sends at most that many bytes from `offset`, so a
+/// large file can go up in chunks that fit a proxy's request size limit.
 public struct UploadRawBody: Sendable, Equatable {
     public let fileURL: URL
     public let offset: Int64
+    /// Maximum number of bytes to send from `offset`. `nil` sends everything to the end of the file.
+    public let length: Int64?
     public let contentType: String
 
-    public init(fileURL: URL, offset: Int64 = 0, contentType: String = "application/octet-stream") {
+    public init(
+        fileURL: URL,
+        offset: Int64 = 0,
+        length: Int64? = nil,
+        contentType: String = "application/octet-stream"
+    ) {
         self.fileURL = fileURL
         self.offset = max(0, offset)
+        self.length = length.map { max(0, $0) }
         self.contentType = contentType
     }
 }

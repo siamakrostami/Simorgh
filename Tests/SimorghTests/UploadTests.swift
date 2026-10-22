@@ -266,6 +266,27 @@ final class UploadTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "6789")
     }
 
+    func testRawWriterWritesSliceWithLength() throws {
+        let file = try makeFile("raw.bin", contents: "0123456789")
+        let destination = directory.appendingPathComponent("raw.body")
+        try RawFileBodyWriter.write(UploadRawBody(fileURL: file, offset: 2, length: 3), to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "234")
+    }
+
+    func testRawWriterLengthFromZeroIsAPrefix() throws {
+        let file = try makeFile("raw.bin", contents: "0123456789")
+        let destination = directory.appendingPathComponent("raw.body")
+        try RawFileBodyWriter.write(UploadRawBody(fileURL: file, length: 4), to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "0123")
+    }
+
+    func testRawWriterLengthPastEndStopsAtEnd() throws {
+        let file = try makeFile("raw.bin", contents: "0123456789")
+        let destination = directory.appendingPathComponent("raw.body")
+        try RawFileBodyWriter.write(UploadRawBody(fileURL: file, offset: 8, length: 100), to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "89")
+    }
+
     func testRawWriterRejectsOffsetPastEnd() throws {
         let file = try makeFile("raw.bin", contents: "0123")
         let destination = directory.appendingPathComponent("raw.body")
