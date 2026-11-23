@@ -36,11 +36,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: |
-          set -o pipefail
           xcodebuild build \
             -scheme Simorgh \
             -destination "generic/platform=${{ matrix.platform }}" \
-            CODE_SIGNING_ALLOWED=NO | tail -n 40
+            CODE_SIGNING_ALLOWED=NO > build.log 2>&1 \
+            || { grep -E "error:|BUILD FAILED|\*\* .* FAILED" -A3 build.log | head -n 120; exit 1; }
+          tail -n 5 build.log
 
   ios-tests:
     name: Test on iOS Simulator
@@ -55,11 +56,12 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
       - name: Test
         run: |
-          set -o pipefail
           xcodebuild test \
             -scheme Simorgh \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            CODE_SIGNING_ALLOWED=NO | tail -n 80
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 \
+            || { grep -E "error:|failed|FAILED" -A3 test.log | head -n 150; exit 1; }
+          grep -E "Executed|passed|failed" test.log | tail -n 5
 
   example-app:
     name: Build example app
@@ -68,9 +70,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: |
-          set -o pipefail
           xcodebuild build \
             -project Example/SimorghExampleApp.xcodeproj \
             -scheme SimorghExampleApp \
             -destination "generic/platform=iOS Simulator" \
-            CODE_SIGNING_ALLOWED=NO | tail -n 40
+            CODE_SIGNING_ALLOWED=NO > build.log 2>&1 \
+            || { grep -E "error:|BUILD FAILED|\*\* .* FAILED" -A3 build.log | head -n 120; exit 1; }
+          tail -n 5 build.log
