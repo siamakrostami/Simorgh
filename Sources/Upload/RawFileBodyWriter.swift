@@ -11,7 +11,7 @@ public enum RawFileBodyWriter {
         }
         let input = try FileHandle(forReadingFrom: body.fileURL)
         defer { try? input.close() }
-        let size = try input.seekToEnd()
+        let size = try input.compatSeekToEnd()
         guard UInt64(body.offset) <= size else { throw UploadFailure.invalidRequest }
         let remaining = size - UInt64(body.offset)
         let bytesToWrite = body.length.map { min(UInt64($0), remaining) } ?? remaining
@@ -28,9 +28,9 @@ public enum RawFileBodyWriter {
         defer { try? output.close() }
         var left = bytesToWrite
         while left > 0 {
-            let chunk = try input.read(upToCount: Int(min(left, 65_536))) ?? Data()
+            let chunk = try input.compatRead(upToCount: Int(min(left, 65_536)))
             if chunk.isEmpty { break }
-            try output.write(contentsOf: chunk)
+            try output.compatWrite(chunk)
             left -= UInt64(chunk.count)
         }
     }

@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format follows
 - Combine uploads and streams now cancel their `URLSessionTask` when the subscriber cancels.
 - A Combine stream now cancels its task when a line fails to decode, instead of leaving
   it running after the publisher has failed.
+- **iOS and tvOS builds:** 2.2.2 did not compile for iOS or tvOS. The upload body writers
+  used `FileHandle` APIs that need 13.4 while the package targets 13.0; they now fall back
+  on older systems.
 - `APIClient` no longer mutates the `URLSessionConfiguration` you pass in.
 - The example app's local package path no longer depends on the name of the checkout folder.
 
