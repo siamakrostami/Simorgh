@@ -109,7 +109,7 @@
 			mainGroup = 017912FE2C9E03770011B237;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */,
+				013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference ".." */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 017913082C9E03770011B237 /* Products */;
@@ -345,16 +345,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */ = {
+		013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference ".." */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../Simorgh;
+			relativePath = ..;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		013259392FEB232100236572 /* Simorgh */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference "../../Simorgh" */;
+			package = 013258FD2FEB217C00236572 /* XCLocalSwiftPackageReference ".." */;
 			productName = Simorgh;
 		};
 /* End XCSwiftPackageProductDependency section */

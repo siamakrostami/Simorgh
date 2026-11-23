@@ -188,4 +188,33 @@ public protocol RetryHandler: Sendable {
     /// - Returns: The modified request for retry
     /// - Throws: An error if the request should not be retried
     func modifyRequestForRetryAsync(client: APIClient, request: URLRequest, error: NetworkError) async throws -> URLRequest
+
+    /// How long to wait before retry number `attempt` (1-based). Return `0` to retry immediately.
+    /// - Parameters:
+    ///   - request: The request that failed
+    ///   - error: The error that occurred
+    ///   - attempt: Which retry this is: `1` for the first retry, `2` for the second, ...
+    func retryDelay(for request: URLRequest, error: NetworkError, attempt: Int) -> TimeInterval
+}
+
+// MARK: - Default implementations
+
+extension RetryHandler {
+    /// Defaults to the synchronous `shouldRetry(request:error:)`.
+    public func shouldRetryAsync(request: URLRequest, error: NetworkError) async -> Bool {
+        shouldRetry(request: request, error: error)
+    }
+
+    /// Defaults to the synchronous `modifyRequestForRetry(client:request:error:)`,
+    /// throwing the returned error if there is one.
+    public func modifyRequestForRetryAsync(client: APIClient, request: URLRequest, error: NetworkError) async throws -> URLRequest {
+        let (newRequest, blockingError) = modifyRequestForRetry(client: client, request: request, error: error)
+        if let blockingError { throw blockingError }
+        return newRequest
+    }
+
+    /// Defaults to no delay.
+    public func retryDelay(for request: URLRequest, error: NetworkError, attempt: Int) -> TimeInterval {
+        0
+    }
 }
