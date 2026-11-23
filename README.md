@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/siamakrostami/Simorgh/actions/workflows/ci.yml"><img src="https://github.com/siamakrostami/Simorgh/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-5.9%2B-orange.svg" alt="Swift 5.9+"></a>
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6-orange.svg" alt="Swift 6"></a>
   <a href="https://developer.apple.com/ios/"><img src="https://img.shields.io/badge/iOS-13%2B-blue.svg" alt="iOS 13+"></a>
@@ -107,11 +108,6 @@ A production-grade Swift networking library. One package covers HTTP, WebSocket,
 | **Platforms** | iOS 13+ · macOS 13+ · tvOS 13+ · watchOS 7+ |
 | **License** | MIT |
 
-> **GitHub About blurb** (for repo settings):  
-> *Production-grade Swift networking — HTTP, WebSocket, subscriptions, downloads, streaming, uploads, and live VPN/network monitoring. Combine + async/await. Swift 5 & 6. iOS 13+.*
-
-See also [`.github/ABOUT.md`](.github/ABOUT.md) for suggested repository topics and tags.
-
 ---
 
 ## What's inside
@@ -128,20 +124,6 @@ See also [`.github/ABOUT.md`](.github/ABOUT.md) for suggested repository topics 
 | `URLSessionLogger` | 4-level structured logging across all transports |
 | `MimeTypeDetector` | Magic-byte MIME detection for uploads and downloads |
 | `HeaderHandler` | Fluent builder for auth, content-type, accept, and custom headers |
-
-### Compared to the legacy `main` branch (`SRNetworkManager`)
-
-| Feature | `main` (SRNetworkManager) | `feature/download-manager` (Simorgh) |
-|---|---|---|
-| HTTP + uploads + cache | ✅ | ✅ |
-| Network monitoring | ✅ basic | ✅ dual-monitor VPN detection |
-| WebSocket | ❌ | ✅ full-duplex + reconnect |
-| Subscription protocol | ❌ | ✅ Amplify/AppSync-style |
-| Download manager | ❌ | ✅ pause/resume, batch, background |
-| HTTP streaming | ✅ | ✅ + example app tab |
-| Structured logging | ✅ HTTP only | ✅ HTTP + WS + downloads + subscriptions |
-| Example app | ❌ | ✅ 7-tab demo |
-| Swift 6 concurrency | partial | ✅ full `Sendable` support |
 
 ---
 
@@ -165,7 +147,7 @@ See also [`.github/ABOUT.md`](.github/ABOUT.md) for suggested repository topics 
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/siamakrostami/Simorgh.git", from: "1.0.0")
+    .package(url: "https://github.com/siamakrostami/Simorgh.git", from: "3.0.0")
 ]
 ```
 
@@ -921,6 +903,7 @@ Supported content types: `applicationJson` · `urlEncoded` · `formData`
 error.localizedDescription   // human-readable message
 error.statusCode             // Int? — HTTP status for .customError
 error.responseData           // Data? — response body for .customError
+error.isCancellation         // Bool — the request was cancelled
 ```
 
 ```swift
@@ -936,6 +919,8 @@ do {
         print("Decoding failed: \(e)")
     case .responseError(let e):
         print("Response error: \(e)")
+    case .invalidRequest(let e):
+        print("Could not build the request: \(e)")   // e.g. NetworkRouterError.invalidURL
     case .unknown:
         print("Unknown error")
     }
@@ -949,13 +934,40 @@ do {
 ### Built-in
 
 ```swift
+// Up to 3 retries with exponential backoff: ~0.5s → 1s → 2s (jittered)
 APIClient(retryHandler: DefaultRetryHandler(numberOfRetries: 3))
 ```
+
+`DefaultRetryHandler` only retries what is safe to repeat:
+
+| | Retried by default |
+|---|---|
+| Methods | `GET`, `HEAD`, `PUT`, `DELETE`, `OPTIONS`, `TRACE` — **not `POST`/`PATCH`** |
+| Status codes | `408`, `429`, `500`, `502`, `503`, `504` |
+| `URLError` | timed out, connection lost, offline, cannot connect / find host, DNS failure |
+| Never | other 4xx, decoding errors, cancellation |
+
+Everything is configurable:
+
+```swift
+DefaultRetryHandler(
+    numberOfRetries: 2,
+    retryableMethods: DefaultRetryHandler.idempotentMethods.union(["POST"]), // only with idempotency keys
+    retryableStatusCodes: [503],
+    baseDelay: 1,        // seconds before the first retry; 0 = immediate
+    maximumDelay: 10,
+    jitter: true
+)
+```
+
+Cancelling the calling `Task` (or the Combine subscription) cancels the in-flight request and any pending retry.
 
 ### Custom
 
 ```swift
 struct CustomRetryHandler: RetryHandler {
+    let numberOfRetries = 3
+
     func shouldRetry(request: URLRequest, error: NetworkError) -> Bool {
         switch error {
         case .urlError(let e):
@@ -971,8 +983,14 @@ struct CustomRetryHandler: RetryHandler {
         req.setValue("retry", forHTTPHeaderField: "X-Retry-Attempt")
         return (req, nil)
     }
+    // Optional: backoff (defaults to 0). `attempt` is 1 for the first retry.
+    func retryDelay(for request: URLRequest, error: NetworkError, attempt: Int) -> TimeInterval {
+        Double(attempt)
+    }
 }
 ```
+
+`shouldRetryAsync` and `modifyRequestForRetryAsync` have default implementations that call the synchronous versions; override them when you need `await` (for example, refreshing a token).
 
 ---
 
@@ -1007,14 +1025,17 @@ client.updateCacheConfiguration(CacheConfiguration(
 ## Session Management
 
 ```swift
-// Cancel all active requests and clear the retry queue
+// Cancel all active requests
 client.cancelAllRequests()
 
-// Update session configuration at runtime (invalidates existing sessions by default)
+// Update session configuration at runtime (cancels in-flight requests by default;
+// pass invalidateExistingSessions: false to let them finish)
 let newConfig = URLSessionConfiguration.default
 newConfig.timeoutIntervalForRequest = 30
 client.updateConfiguration(newConfig)
 ```
+
+All requests share one long-lived `URLSession`, so connections, TLS sessions and HTTP/2 streams are reused. Uploads with progress reporting and Combine streams use a short-lived session that is invalidated as soon as the task finishes.
 
 ---
 
@@ -1053,7 +1074,7 @@ let uploadClient = APIClient(configuration: bgConfig)
 
 | Component | Mechanism |
 |---|---|
-| `APIClient` | `DispatchQueue` with `.barrier` writes, `@unchecked Sendable` |
+| `APIClient` | Private serial `DispatchQueue` guarding all state, `@unchecked Sendable` |
 | `DownloadManager` | `NSLock` protecting all mutable state |
 | `NetworkMonitor` | `NSLock` + dedicated monitor queue |
 | `HeaderHandler` | Synchronized builder, resets on `build()` |

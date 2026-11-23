@@ -43,16 +43,16 @@ public enum MultipartFileBodyWriter {
         guard let data = string.data(using: .utf8) else {
             throw UploadFailure.multipartEncodingFailed
         }
-        try output.write(contentsOf: data)
+        try output.compatWrite(data)
     }
 
     private static func streamFile(at source: URL, to output: FileHandle) throws {
         let input = try FileHandle(forReadingFrom: source)
         defer { try? input.close() }
         while true {
-            let chunk = try input.read(upToCount: 65_536) ?? Data()
+            let chunk = try input.compatRead(upToCount: 65_536)
             if chunk.isEmpty { break }
-            try output.write(contentsOf: chunk)
+            try output.compatWrite(chunk)
         }
     }
 }

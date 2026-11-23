@@ -106,6 +106,17 @@ public enum NetworkError: Error, Sendable {
     case decodingError(Error)
     case customError(Int, Data)
     case responseError(Error)
+    /// The endpoint could not be turned into a `URLRequest` (bad URL, parameter encoding failed, ...).
+    /// The associated value is the underlying error, e.g. `NetworkRouterError.invalidURL`.
+    case invalidRequest(Error)
+}
+
+extension NetworkError {
+    /// `true` when the request was cancelled (task cancellation or `URLError.cancelled`).
+    public var isCancellation: Bool {
+        if case .urlError(let error) = self { return error.code == .cancelled }
+        return false
+    }
 }
 
 // MARK: LocalizedError
@@ -123,6 +134,8 @@ extension NetworkError: LocalizedError {
             return "Server returned status code \(statusCode)."
         case .responseError(let error):
             return error.localizedDescription
+        case .invalidRequest(let error):
+            return "The request could not be built: \(error.localizedDescription)"
         }
     }
 

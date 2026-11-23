@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spm:
+    name: SwiftPM build & test (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test --skip-build
+
+  platforms:
+    name: Build ${{ matrix.platform }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [iOS, tvOS, watchOS]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          xcodebuild build \
+            -scheme Simorgh \
+            -destination "generic/platform=${{ matrix.platform }}" \
+            CODE_SIGNING_ALLOWED=NO > build.log 2>&1 \
+            || { grep -E "error:|BUILD FAILED|\*\* .* FAILED" -A3 build.log | head -n 120; exit 1; }
+          tail -n 5 build.log
+
+  ios-tests:
+    name: Test on iOS Simulator
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Test
+        run: |
+          xcodebuild test \
+            -scheme Simorgh \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO > test.log 2>&1 \
+            || { grep -E "error:|failed|FAILED" -A3 test.log | head -n 150; exit 1; }
+          grep -E "Executed|passed|failed" test.log | tail -n 5
+
+  example-app:
+    name: Build example app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project Example/SimorghExampleApp.xcodeproj \
+            -scheme SimorghExampleApp \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO > build.log 2>&1 \
+            || { grep -E "error:|BUILD FAILED|\*\* .* FAILED" -A3 build.log | head -n 120; exit 1; }
+          tail -n 5 build.log
